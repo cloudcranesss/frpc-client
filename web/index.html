@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FRP 网页客户端</title>
+    <link rel="stylesheet" href="/web/style.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <aside class="panel sidebar">
+        <div class="sidebar-header">
+          <h2>客户端</h2>
+          <button id="add_client_btn" class="secondary small">新增</button>
+        </div>
+        <div id="client_list" class="client-list"></div>
+        <button id="delete_client_btn" class="danger">删除当前客户端</button>
+      </aside>
+
+      <section class="content">
+        <header class="top-bar">
+          <h1>FRP 多客户端面板</h1>
+          <div class="top-actions">
+            <span id="user_badge" class="user-badge">未登录</span>
+            <button id="change_password_btn" class="secondary small">改密码</button>
+            <button id="logout_btn" class="danger small">退出</button>
+            <div id="status-pill" class="pill offline">未运行</div>
+          </div>
+        </header>
+
+        <section class="panel">
+          <h2>客户端设置</h2>
+          <div class="field">
+            <label for="client_name">客户端名称</label>
+            <input id="client_name" placeholder="例如: moviepilot-prod" />
+          </div>
+          <div class="field">
+            <label for="frpc_path">frpc 可执行文件</label>
+            <input id="frpc_path" placeholder="例如: bin/windows/frpc.exe 或 bin/linux/frpc 或 frpc" />
+          </div>
+          <div class="field">
+            <label for="run_args">额外参数（可选）</label>
+            <input id="run_args" placeholder="例如: --log-level info" />
+          </div>
+          <div class="field">
+            <label for="config_text">frpc 配置（TOML）</label>
+            <textarea id="config_text" rows="14"></textarea>
+          </div>
+          <div class="actions">
+            <button id="auto_path_btn" class="secondary">自动选择路径</button>
+            <button id="save_btn" class="secondary">保存配置</button>
+            <button id="start_btn" class="primary">启动</button>
+            <button id="stop_btn" class="danger">停止</button>
+            <button id="refresh_btn">刷新状态</button>
+          </div>
+          <p id="hint" class="hint"></p>
+        </section>
+
+        <section class="panel">
+          <h2>运行日志</h2>
+          <pre id="logs" class="logs"></pre>
+        </section>
+      </section>
+    </main>
+    <script src="/web/app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+data/*
+!data/.gitkeep
+
+bin/linux/frpc
+bin/windows/frpc.exe
+
+.idea/
+.vscode/
+

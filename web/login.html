@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>登录 - FRP 多客户端面板</title>
+    <link rel="stylesheet" href="/web/style.css" />
+    <style>
+      .login-wrap {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+      }
+      .login-card {
+        width: min(420px, 100%);
+        background: #ffffff;
+        border: 1px solid #d8e0e8;
+        border-radius: 14px;
+        padding: 22px;
+        box-shadow: 0 14px 38px rgba(6, 22, 47, 0.08);
+      }
+      .login-card h1 {
+        margin: 0 0 14px;
+        font-size: 24px;
+      }
+      .login-desc {
+        color: #607086;
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+      .login-tip {
+        color: #607086;
+        font-size: 12px;
+        margin-top: 10px;
+      }
+      .login-error {
+        min-height: 20px;
+        color: #9f1d35;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="login-wrap">
+      <section class="login-card">
+        <h1>FRP 面板登录</h1>
+        <p class="login-desc">请输入账号密码进入管理界面。</p>
+        <div class="field">
+          <label for="username">用户名</label>
+          <input id="username" value="admin" autocomplete="username" />
+        </div>
+        <div class="field">
+          <label for="password">密码</label>
+          <input id="password" type="password" autocomplete="current-password" />
+        </div>
+        <div class="actions" style="grid-template-columns: 1fr">
+          <button id="login_btn" class="primary">登录</button>
+        </div>
+        <p id="login_error" class="login-error"></p>
+        <p class="login-tip">首次默认账号: admin / admin123456</p>
+      </section>
+    </main>
+    <script src="/web/login.js" type="module"></script>
+  </body>
+</html>
+
