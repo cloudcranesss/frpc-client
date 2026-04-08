@@ -16,6 +16,8 @@ const els = {
   refreshBtn: document.querySelector("#refresh_btn"),
   hint: document.querySelector("#hint"),
   logs: document.querySelector("#logs"),
+  jumpCount: document.querySelector("#jump_count"),
+  jumpLinks: document.querySelector("#jump_links"),
   statusPill: document.querySelector("#status-pill"),
 };
 
@@ -69,6 +71,9 @@ const api = {
   },
   async logs(clientId, limit = 300) {
     return request(`/api/clients/${encodeURIComponent(clientId)}/logs?limit=${limit}`);
+  },
+  async jumpLinks(clientId) {
+    return request(`/api/clients/${encodeURIComponent(clientId)}/jump-links`);
   },
 };
 
@@ -140,6 +145,43 @@ function fillConfig(cfg) {
   els.configText.value = cfg.config_text ?? "";
 }
 
+function renderJumpLinks(items) {
+  els.jumpLinks.innerHTML = "";
+  const count = Array.isArray(items) ? items.length : 0;
+  els.jumpCount.textContent = String(count);
+  if (!items || items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "jump-empty";
+    empty.textContent = "当前客户端暂无可跳转服务（需配置 serverAddr 和 proxies.remotePort）。";
+    els.jumpLinks.appendChild(empty);
+    return;
+  }
+  for (const item of items) {
+    const card = document.createElement("div");
+    card.className = "jump-link-item";
+
+    const title = document.createElement("div");
+    title.className = "jump-link-title";
+    title.textContent = `${item.proxy_name} (${item.proxy_type})`;
+
+    const meta = document.createElement("div");
+    meta.className = "jump-link-meta";
+    meta.textContent = `${item.server_addr}:${item.remote_port}`;
+
+    const link = document.createElement("a");
+    link.className = "jump-link-url";
+    link.href = item.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = item.url;
+
+    card.appendChild(title);
+    card.appendChild(meta);
+    card.appendChild(link);
+    els.jumpLinks.appendChild(card);
+  }
+}
+
 function buildPayload() {
   return {
     id: state.activeClientId,
@@ -167,16 +209,19 @@ async function loadSelectedClientConfig() {
 async function refreshStatusAndLogs() {
   if (!activeClientExists()) {
     els.logs.textContent = "";
+    renderJumpLinks([]);
     updateStatusPill({ running: false, pid: null });
     return;
   }
-  const [status, logs] = await Promise.all([
+  const [status, logs, links] = await Promise.all([
     api.status(state.activeClientId),
     api.logs(state.activeClientId),
+    api.jumpLinks(state.activeClientId),
   ]);
   updateStatusPill(status);
   els.logs.textContent = logs.items.join("\n");
   els.logs.scrollTop = els.logs.scrollHeight;
+  renderJumpLinks(links.items);
 }
 
 async function refreshDashboard() {

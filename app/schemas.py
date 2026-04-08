@@ -76,3 +76,16 @@ class AuthStatusResponse(BaseModel):
 class ChangePasswordPayload(BaseModel):
     old_password: str
     new_password: str
+
+
+class JumpLinkItem(BaseModel):
+    proxy_name: str
+    proxy_type: str
+    server_addr: str
+    remote_port: int
+    local_port: int | None = None
+    url: str
+
+
+class JumpLinksResponse(BaseModel):
+    items: list[JumpLinkItem]

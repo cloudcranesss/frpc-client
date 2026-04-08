@@ -1,0 +1,21 @@
+services:
+  frp-web-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: frp-web-client:latest
+    container_name: frp-web-client
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - FRP_PANEL_SECURE_COOKIE=false
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/auth/status >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+

@@ -8,6 +8,7 @@
 - `frpc.toml` 在线编辑
 - 每个客户端独立启动 / 停止 `frpc`
 - 查看运行状态与实时日志（轮询）
+- 自动生成服务跳转链接（`serverAddr + remotePort`，支持多服务）
 
 ## 1. 安装
 
@@ -90,6 +91,13 @@ docker run -d \
   frp-web-client:latest
 ```
 
+或使用 `docker-compose`：
+
+```bash
+cd /opt/frp_web_client
+docker compose up -d --build
+```
+
 访问：
 
 - [http://127.0.0.1:8000](http://127.0.0.1:8000)
@@ -97,6 +105,11 @@ docker run -d \
 建议在反代 HTTPS 场景下保留默认环境变量：
 
 - `FRP_PANEL_SECURE_COOKIE=true`
+
+说明：
+
+- Docker 镜像默认 `FRP_PANEL_SECURE_COOKIE=false`，便于直接用 `http://IP:8000` 登录。
+- 若你走 HTTPS 域名访问，建议设置为 `true`。
 
 ## 5. GitHub Actions 自动构建镜像
 

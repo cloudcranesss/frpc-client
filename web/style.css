@@ -249,6 +249,73 @@ button.danger {
   line-height: 1.4;
 }
 
+.jump-links {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.jump-panel {
+  border-color: #bfd5ff;
+  background:
+    linear-gradient(180deg, #f5f9ff 0%, #ffffff 45%);
+}
+
+.jump-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.jump-count {
+  background: #1f6feb;
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 28px;
+  text-align: center;
+  padding: 4px 10px;
+}
+
+.jump-link-item {
+  border: 1px solid #cedcf5;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f7faff;
+}
+
+.jump-link-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.jump-link-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.jump-link-url {
+  font-size: 13px;
+  color: #1f6feb;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.jump-link-url:hover {
+  text-decoration: underline;
+}
+
+.jump-empty {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 4px;
+}
+
 @media (max-width: 980px) {
   .layout {
     grid-template-columns: 1fr;
@@ -260,6 +327,10 @@ button.danger {
 
   .actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .jump-links {
+    grid-template-columns: 1fr;
   }
 
   .top-bar {

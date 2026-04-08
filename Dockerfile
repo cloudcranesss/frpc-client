@@ -5,7 +5,7 @@ ARG TARGETARCH
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    FRP_PANEL_SECURE_COOKIE=true
+    FRP_PANEL_SECURE_COOKIE=false
 
 WORKDIR /app
 
@@ -33,4 +33,3 @@ EXPOSE 8000
 VOLUME ["/app/data"]
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
-

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import tomllib
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,8 @@ try:
         LoginPayload,
         LoginResponse,
         LogsResponse,
+        JumpLinkItem,
+        JumpLinksResponse,
         StatusResponse,
     )
 except ImportError:
@@ -57,6 +60,8 @@ except ImportError:
         LoginPayload,
         LoginResponse,
         LogsResponse,
+        JumpLinkItem,
+        JumpLinksResponse,
         StatusResponse,
     )
 
@@ -171,6 +176,65 @@ def _clients_response(state: ClientState) -> ClientsResponse:
             )
         )
     return ClientsResponse(active_client_id=state.active_client_id, clients=clients)
+
+
+def _guess_link_scheme(proxy_type: str, remote_port: int, local_port: int | None) -> str:
+    proxy_type = proxy_type.lower()
+    if proxy_type == "https":
+        return "https"
+    if proxy_type == "http":
+        return "http"
+    if remote_port == 443 or local_port == 443:
+        return "https"
+    return "http"
+
+
+def _safe_int(value: object) -> int | None:
+    try:
+        return int(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
+def _build_jump_links(client: ProxyClientConfig) -> list[JumpLinkItem]:
+    config_text = client.config_text.strip()
+    if not config_text:
+        return []
+    try:
+        parsed = tomllib.loads(config_text)
+    except tomllib.TOMLDecodeError:
+        return []
+
+    server_addr = str(parsed.get("serverAddr", "")).strip()
+    if not server_addr:
+        return []
+
+    proxies = parsed.get("proxies", [])
+    if not isinstance(proxies, list):
+        return []
+
+    items: list[JumpLinkItem] = []
+    for proxy in proxies:
+        if not isinstance(proxy, dict):
+            continue
+        remote_port = _safe_int(proxy.get("remotePort"))
+        if remote_port is None:
+            continue
+        local_port = _safe_int(proxy.get("localPort"))
+        proxy_name = str(proxy.get("name", f"proxy-{len(items) + 1}")).strip() or f"proxy-{len(items) + 1}"
+        proxy_type = str(proxy.get("type", "tcp")).strip().lower() or "tcp"
+        scheme = _guess_link_scheme(proxy_type, remote_port, local_port)
+        items.append(
+            JumpLinkItem(
+                proxy_name=proxy_name,
+                proxy_type=proxy_type,
+                server_addr=server_addr,
+                remote_port=remote_port,
+                local_port=local_port,
+                url=f"{scheme}://{server_addr}:{remote_port}",
+            )
+        )
+    return items
 
 
 async def _resolve_start_config(client_id: str) -> ProxyClientConfig:
@@ -437,6 +501,13 @@ async def client_logs(
     return LogsResponse(items=frpc_manager.logs(client_id, limit=limit))
 
 
+@app.get("/api/clients/{client_id}/jump-links", response_model=JumpLinksResponse)
+async def client_jump_links(client_id: str) -> JumpLinksResponse:
+    state = await config_store.load_state()
+    client = _find_client(state, client_id)
+    return JumpLinksResponse(items=_build_jump_links(client))
+
+
 @app.get("/api/clients/{client_id}/frpc-path/auto", response_model=AutoFrpcPathResponse)
 async def auto_frpc_path_for_client(client_id: str) -> AutoFrpcPathResponse:
     state = await config_store.load_state()
@@ -504,6 +575,13 @@ async def logs(
     state = await config_store.load_state()
     active = _active_client(state)
     return LogsResponse(items=frpc_manager.logs(active.id, limit=limit))
+
+
+@app.get("/api/jump-links", response_model=JumpLinksResponse)
+async def jump_links() -> JumpLinksResponse:
+    state = await config_store.load_state()
+    active = _active_client(state)
+    return JumpLinksResponse(items=_build_jump_links(active))
 
 
 @app.get("/api/frpc-path/auto", response_model=AutoFrpcPathResponse)
