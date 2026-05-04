@@ -89,6 +89,9 @@ pip install -r requirements.txt
 python run.py
 ```
 
+`run.py` 会在启动前自动检查并安装缺失依赖（基于 `requirements.txt`）。
+如需关闭自动安装，可设置环境变量 `FRP_PANEL_AUTO_INSTALL_DEPS=false`。
+
 ## Docker 运行
 
 ```bash
