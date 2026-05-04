@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>告警设置 - FRP 面板</title>
+    <link rel="stylesheet" href="/web/style.css" />
+  </head>
+  <body data-page="alerts">
+    <header class="site-header">
+      <div class="brand">
+        <h1>FRP 面板</h1>
+        <p>告警渠道与规则</p>
+      </div>
+      <nav class="nav-tabs" aria-label="主导航">
+        <a href="/" data-nav="dashboard">控制台</a>
+        <a href="/events" data-nav="events">运行事件</a>
+        <a href="/alerts" data-nav="alerts">告警设置</a>
+        <a href="/maintenance" data-nav="maintenance">维护工具</a>
+      </nav>
+      <div class="head-actions">
+        <select id="theme_mode" class="theme-select" aria-label="主题模式">
+          <option value="system">跟随系统</option>
+          <option value="light">浅色主题</option>
+          <option value="dark">深色主题</option>
+        </select>
+        <span id="user_badge" class="user-badge">未登录</span>
+        <button id="logout_btn" class="btn danger small">退出登录</button>
+      </div>
+    </header>
+
+    <main class="single-page">
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h2>Webhook 渠道</h2>
+          <button id="alert_reload_btn" class="btn secondary small">刷新渠道</button>
+        </div>
+        <div class="field">
+          <label for="alert_name">渠道名称</label>
+          <input id="alert_name" placeholder="例如: 飞书告警" />
+        </div>
+        <div class="field">
+          <label for="alert_webhook_url">Webhook 地址</label>
+          <input id="alert_webhook_url" placeholder="https://example.com/webhook" />
+        </div>
+        <div class="field two-cols">
+          <div>
+            <label for="alert_timeout_sec">超时秒数</label>
+            <input id="alert_timeout_sec" type="number" min="1" max="60" value="5" />
+          </div>
+          <div class="checkbox-field">
+            <input id="alert_enabled" type="checkbox" checked />
+            <label for="alert_enabled">启用渠道</label>
+          </div>
+        </div>
+        <div class="actions two">
+          <button id="alert_create_btn" class="btn primary">新增渠道</button>
+        </div>
+        <div id="alert_channels" class="alert-channels"></div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h2>触发规则</h2>
+        </div>
+        <div class="field checkbox-field">
+          <input id="rule_start_failure" type="checkbox" checked />
+          <label for="rule_start_failure">启动失败触发</label>
+        </div>
+        <div class="field checkbox-field">
+          <input id="rule_abnormal_exit" type="checkbox" checked />
+          <label for="rule_abnormal_exit">异常退出触发</label>
+        </div>
+        <div class="field checkbox-field">
+          <input id="rule_restart_threshold" type="checkbox" checked />
+          <label for="rule_restart_threshold">连续重启阈值触发</label>
+        </div>
+        <div class="field">
+          <label for="rule_restart_threshold_value">连续重启阈值</label>
+          <input id="rule_restart_threshold_value" type="number" min="1" max="100" value="3" />
+        </div>
+        <div class="actions two">
+          <button id="rules_save_btn" class="btn secondary">保存规则</button>
+        </div>
+        <p id="alerts_hint" class="hint info"></p>
+      </section>
+    </main>
+    <script src="/web/shared.js" type="module"></script>
+    <script src="/web/alerts.js" type="module"></script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class AppConfigPayload(BaseModel):
@@ -16,16 +16,14 @@ class ClientCreatePayload(BaseModel):
     name: str = Field(default="新客户端")
 
 
-class ClientSelectPayload(BaseModel):
-    client_id: str
-
-
 class StatusResponse(BaseModel):
     running: bool
     pid: int | None = None
     started_at: float | None = None
     uptime_sec: float = 0
     last_exit_code: int | None = None
+    restart_count: int = 0
+    last_error: str | None = None
 
 
 class LogsResponse(BaseModel):
@@ -51,6 +49,8 @@ class ClientListItem(BaseModel):
     pid: int | None = None
     uptime_sec: float = 0
     last_exit_code: int | None = None
+    restart_count: int = 0
+    last_error: str | None = None
 
 
 class ClientsResponse(BaseModel):
@@ -78,6 +78,17 @@ class ChangePasswordPayload(BaseModel):
     new_password: str
 
 
+class AuthProfileResponse(BaseModel):
+    username: str
+    password_policy: str
+
+
+class UpdateAuthProfilePayload(BaseModel):
+    new_username: str | None = None
+    current_password: str
+    new_password: str | None = None
+
+
 class JumpLinkItem(BaseModel):
     proxy_name: str
     proxy_type: str
@@ -89,3 +100,125 @@ class JumpLinkItem(BaseModel):
 
 class JumpLinksResponse(BaseModel):
     items: list[JumpLinkItem]
+
+
+class RuntimeEventItem(BaseModel):
+    id: int
+    client_id: str
+    event_type: str
+    exit_type: str | None = None
+    message: str
+    payload: dict[str, object] = Field(default_factory=dict)
+    created_at: float
+
+
+class RuntimeEventsResponse(BaseModel):
+    items: list[RuntimeEventItem]
+
+
+class AlertChannelPayload(BaseModel):
+    name: str
+    webhook_url: HttpUrl
+    timeout_sec: int = Field(default=5, ge=1, le=60)
+    enabled: bool = True
+
+
+class AlertChannelResponse(BaseModel):
+    id: int
+    name: str
+    webhook_url: str
+    timeout_sec: int
+    enabled: bool
+    created_at: float
+    updated_at: float
+
+
+class AlertChannelsResponse(BaseModel):
+    items: list[AlertChannelResponse]
+
+
+class AlertRulesPayload(BaseModel):
+    on_start_failure: bool = True
+    on_abnormal_exit: bool = True
+    on_restart_threshold: bool = True
+    restart_threshold: int = Field(default=3, ge=1, le=100)
+
+
+class AlertRulesResponse(BaseModel):
+    on_start_failure: bool
+    on_abnormal_exit: bool
+    on_restart_threshold: bool
+    restart_threshold: int
+
+
+class PreflightResponse(BaseModel):
+    ok: bool
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class TemplatePayload(BaseModel):
+    name: str
+    tags: list[str] = Field(default_factory=list)
+    content: str
+    source_client_id: str | None = None
+
+
+class TemplateResponse(BaseModel):
+    id: int
+    name: str
+    tags: list[str]
+    content: str
+    variables: list[str]
+    source_client_id: str | None = None
+    version: int
+    last_used_at: float | None = None
+    created_at: float
+    updated_at: float
+
+
+class TemplatesResponse(BaseModel):
+    items: list[TemplateResponse]
+
+
+class MaintenanceReadOnlyPayload(BaseModel):
+    enabled: bool
+
+
+class MaintenanceStateResponse(BaseModel):
+    read_only: bool
+    snapshot_max_keep: int
+
+
+class ImportPreviewResponse(BaseModel):
+    schema_version: int
+    import_client_count: int
+    conflicts: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    ready: bool
+
+
+class SnapshotItem(BaseModel):
+    id: int
+    reason: str
+    created_at: float
+
+
+class SnapshotsResponse(BaseModel):
+    items: list[SnapshotItem]
+
+
+class SnapshotRollbackPayload(BaseModel):
+    snapshot_id: int
+
+
+class AuditLogItem(BaseModel):
+    id: int
+    action: str
+    target: str
+    detail: dict[str, object] = Field(default_factory=dict)
+    created_at: float
+
+
+class AuditLogsResponse(BaseModel):
+    items: list[AuditLogItem]

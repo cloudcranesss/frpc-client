@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>维护工具 - FRP 面板</title>
+    <link rel="stylesheet" href="/web/style.css" />
+  </head>
+  <body data-page="maintenance">
+    <header class="site-header">
+      <div class="brand">
+        <h1>FRP 面板</h1>
+        <p>备份恢复与运维工具</p>
+      </div>
+      <nav class="nav-tabs" aria-label="主导航">
+        <a href="/" data-nav="dashboard">控制台</a>
+        <a href="/events" data-nav="events">运行事件</a>
+        <a href="/alerts" data-nav="alerts">告警设置</a>
+        <a href="/maintenance" data-nav="maintenance">维护工具</a>
+      </nav>
+      <div class="head-actions">
+        <select id="theme_mode" class="theme-select" aria-label="主题模式">
+          <option value="system">跟随系统</option>
+          <option value="light">浅色主题</option>
+          <option value="dark">深色主题</option>
+        </select>
+        <span id="user_badge" class="user-badge">未登录</span>
+        <button id="logout_btn" class="btn danger small">退出登录</button>
+      </div>
+    </header>
+
+    <main class="single-page">
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h2>备份与恢复</h2>
+        </div>
+        <div class="actions two">
+          <button id="export_btn" class="btn primary">导出配置包</button>
+          <button id="diagnostics_btn" class="btn secondary">下载诊断包</button>
+        </div>
+        <div class="field">
+          <label for="import_file">导入文件（zip）</label>
+          <input id="import_file" type="file" accept=".zip" />
+        </div>
+        <div class="actions">
+          <button id="preview_btn" class="btn secondary">导入预检</button>
+          <button id="apply_overwrite_btn" class="btn danger">覆盖导入</button>
+          <button id="apply_merge_btn" class="btn">合并导入</button>
+        </div>
+        <pre id="preview_output" class="logs" style="min-height: 120px"></pre>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h2>维护模式与快照</h2>
+        </div>
+        <div class="checkbox-field">
+          <input id="read_only_toggle" type="checkbox" />
+          <label for="read_only_toggle">只读维护模式</label>
+        </div>
+        <div class="actions two">
+          <button id="refresh_snapshots_btn" class="btn secondary">刷新快照</button>
+        </div>
+        <div id="snapshots_list" class="events-list"></div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h2>模板库</h2>
+        </div>
+        <div class="field">
+          <label for="template_name">模板名称</label>
+          <input id="template_name" />
+        </div>
+        <div class="field">
+          <label for="template_tags">标签（逗号分隔）</label>
+          <input id="template_tags" placeholder="http,tcp" />
+        </div>
+        <div class="field">
+          <label for="template_content">模板内容</label>
+          <textarea id="template_content" rows="8"></textarea>
+        </div>
+        <div class="actions two">
+          <button id="template_create_btn" class="btn primary">新增模板</button>
+          <button id="template_reload_btn" class="btn secondary">刷新模板</button>
+        </div>
+        <div id="templates_list" class="events-list"></div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h2>操作审计</h2>
+          <button id="audit_reload_btn" class="btn secondary small">刷新</button>
+        </div>
+        <div id="audit_list" class="events-list"></div>
+        <p id="maintenance_hint" class="hint info"></p>
+      </section>
+    </main>
+
+    <script src="/web/shared.js" type="module"></script>
+    <script src="/web/maintenance.js" type="module"></script>
+  </body>
+</html>
