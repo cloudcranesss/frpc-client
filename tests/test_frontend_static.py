@@ -50,11 +50,11 @@ def test_maintenance_download_uses_mixed_http_methods():
 def test_pages_are_chinese_and_nav_no_english_labels():
     for page in ("index.html", "events.html", "alerts.html", "maintenance.html", "login.html"):
         text = _read(page)
-        assert "控制台" in text or "账号登录" in text
         assert ">Dashboard<" not in text
         assert ">Events<" not in text
         assert ">Alerts<" not in text
         assert ">Maintenance<" not in text
+        assert "控制台" in text or "账号登录" in text
 
 
 def test_events_page_has_event_type_zh_mapping():
@@ -69,3 +69,18 @@ def test_login_page_remembers_last_username_only():
     assert "frp_panel_last_username" in text
     assert "setItem(LAST_USERNAME_KEY, username)" in text
     assert "不会在浏览器保存密码" in _read("login.html")
+
+
+def test_dashboard_has_ui_v2_notice_entry_and_modal():
+    html = _read("index.html")
+    assert "UI v2" in html
+    assert 'id="ui_changes_btn"' in html
+    assert 'id="ui_notice_modal"' in html
+    assert 'id="ui_notice_close_btn"' in html
+
+
+def test_dashboard_notice_uses_localstorage_once_flag():
+    script = _read("dashboard.js")
+    assert "frp_ui_notice_dismissed_v2" in script
+    assert "localStorage.setItem(UI_NOTICE_KEY" in script
+    assert "localStorage.getItem(UI_NOTICE_KEY)" in script

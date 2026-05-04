@@ -11,6 +11,10 @@
       <div class="brand">
         <h1>FRP 面板</h1>
         <p>轻量多客户端管理</p>
+        <div class="brand-meta">
+          <span class="ui-version-badge">UI v2</span>
+          <button id="ui_changes_btn" class="ui-changes-link" type="button">最近变更</button>
+        </div>
       </div>
       <nav class="nav-tabs" aria-label="主导航">
         <a href="/" data-nav="dashboard">控制台</a>
@@ -133,6 +137,22 @@
         </section>
       </aside>
     </main>
+
+    <section id="ui_notice_modal" class="ui-notice-backdrop hidden" aria-live="polite" aria-modal="true" role="dialog">
+      <div class="ui-notice-card">
+        <h2>界面更新说明（UI v2）</h2>
+        <p>当前已启用新版界面，导航结构与账号设置入口均有调整。</p>
+        <ul class="ui-notice-list">
+          <li>顶部导航改为：控制台 / 运行事件 / 告警设置 / 维护工具。</li>
+          <li>账号设置已移动到控制台右侧栏，支持用户名与密码管理。</li>
+          <li>本提示仅首次显示一次，可通过“最近变更”再次查看。</li>
+        </ul>
+        <div class="actions two">
+          <button id="ui_notice_close_btn" class="btn primary" type="button">我知道了</button>
+        </div>
+      </div>
+    </section>
+
     <script src="/web/shared.js" type="module"></script>
     <script src="/web/dashboard.js" type="module"></script>
   </body>

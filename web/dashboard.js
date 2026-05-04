@@ -36,6 +36,9 @@ const els = {
   accountPolicy: document.querySelector("#account_policy"),
   accountStrength: document.querySelector("#account_strength"),
   accountSaveBtn: document.querySelector("#account_save_btn"),
+  uiChangesBtn: document.querySelector("#ui_changes_btn"),
+  uiNoticeModal: document.querySelector("#ui_notice_modal"),
+  uiNoticeCloseBtn: document.querySelector("#ui_notice_close_btn"),
 };
 
 const state = {
@@ -46,6 +49,8 @@ const state = {
   reconnectTimer: null,
   streamToken: 0,
 };
+
+const UI_NOTICE_KEY = "frp_ui_notice_dismissed_v2";
 
 const api = {
   async authProfile() {
@@ -100,6 +105,20 @@ function setHint(text, level = "info") {
   els.hint.textContent = text;
   els.hint.classList.remove("info", "warn", "error");
   els.hint.classList.add(level);
+}
+
+function showUiNoticeModal() {
+  els.uiNoticeModal?.classList.remove("hidden");
+}
+
+function hideUiNoticeModal(markDismissed = false) {
+  els.uiNoticeModal?.classList.add("hidden");
+  if (!markDismissed) return;
+  try {
+    window.localStorage.setItem(UI_NOTICE_KEY, "1");
+  } catch (_error) {
+    // Ignore localStorage failures and continue without persistence.
+  }
 }
 
 function evaluatePasswordStrength(value) {
@@ -538,6 +557,15 @@ function bindEvents() {
   });
   els.accountSaveBtn.addEventListener("click", handleAccountSave);
   els.accountNewPassword.addEventListener("input", updatePasswordHint);
+  els.uiChangesBtn?.addEventListener("click", () => {
+    showUiNoticeModal();
+  });
+  els.uiNoticeCloseBtn?.addEventListener("click", () => {
+    hideUiNoticeModal(true);
+  });
+  els.uiNoticeModal?.addEventListener("click", (event) => {
+    if (event.target === els.uiNoticeModal) hideUiNoticeModal(true);
+  });
 }
 
 async function init() {
@@ -558,6 +586,12 @@ async function init() {
   await refreshStatusLogsLinks();
   connectStream();
   hidePreflightPanel();
+  try {
+    const dismissed = window.localStorage.getItem(UI_NOTICE_KEY);
+    if (!dismissed) showUiNoticeModal();
+  } catch (_error) {
+    showUiNoticeModal();
+  }
 }
 
 window.addEventListener("beforeunload", closeStream);
