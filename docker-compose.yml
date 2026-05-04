@@ -6,16 +6,15 @@ services:
     image: frp-web-client:latest
     container_name: frp-web-client
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    network_mode: host
+    command: ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $${FRP_PANEL_PORT:-8000} --workers 1"]
     environment:
       - FRP_PANEL_SECURE_COOKIE=false
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - FRP_PANEL_PORT=8000
     volumes:
       - ./data:/app/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/auth/status >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:$${FRP_PANEL_PORT:-8000}/api/auth/status >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
