@@ -14,6 +14,7 @@ const els = {
   readOnlyToggle: document.querySelector("#read_only_toggle"),
   refreshSnapshotsBtn: document.querySelector("#refresh_snapshots_btn"),
   snapshotsList: document.querySelector("#snapshots_list"),
+  clearBrowserCacheBtn: document.querySelector("#clear_browser_cache_btn"),
   templateName: document.querySelector("#template_name"),
   templateTags: document.querySelector("#template_tags"),
   templateContent: document.querySelector("#template_content"),
@@ -168,6 +169,57 @@ async function importApply(mode) {
   await Promise.all([refreshSnapshots(), refreshAudits()]);
 }
 
+async function clearBrowserCacheAndReload() {
+  const confirmed = window.confirm("确认清除浏览器本地缓存并刷新页面吗？");
+  if (!confirmed) return;
+  const errors = [];
+
+  try {
+    window.localStorage.clear();
+  } catch (error) {
+    errors.push(`localStorage: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  try {
+    window.sessionStorage.clear();
+  } catch (error) {
+    errors.push(`sessionStorage: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if ("caches" in window) {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    } catch (error) {
+      errors.push(`Cache Storage: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if ("serviceWorker" in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((item) => item.unregister()));
+    } catch (error) {
+      errors.push(`Service Worker: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  try {
+    const cookies = document.cookie ? document.cookie.split(";") : [];
+    for (const raw of cookies) {
+      const [nameRaw] = raw.split("=");
+      const name = nameRaw.trim();
+      if (!name) continue;
+      document.cookie = `${name}=; Max-Age=0; path=/`;
+    }
+  } catch (error) {
+    errors.push(`Cookie: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (errors.length > 0) {
+    setHint(`缓存清理已执行，部分项清除失败：${errors.join(" | ")}`, "warn");
+  } else {
+    setHint("浏览器缓存已清理，正在刷新页面。", "info");
+  }
+  setTimeout(() => window.location.reload(), 220);
+}
+
 function bindEvents() {
   els.logoutBtn.addEventListener("click", () => logout());
   els.exportBtn.addEventListener("click", async () => {
@@ -224,6 +276,13 @@ function bindEvents() {
       setHint("快照已刷新。", "info");
     } catch (error) {
       setHint(`刷新快照失败: ${error.message}`, "error");
+    }
+  });
+  els.clearBrowserCacheBtn.addEventListener("click", async () => {
+    try {
+      await clearBrowserCacheAndReload();
+    } catch (error) {
+      setHint(`清除浏览器缓存失败: ${error.message}`, "error");
     }
   });
   els.snapshotsList.addEventListener("click", async (event) => {

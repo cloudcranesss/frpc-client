@@ -10,6 +10,8 @@ services:
       - "8000:8000"
     environment:
       - FRP_PANEL_SECURE_COOKIE=false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/app/data
     healthcheck:
@@ -18,4 +20,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-

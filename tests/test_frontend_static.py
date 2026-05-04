@@ -47,6 +47,16 @@ def test_maintenance_download_uses_mixed_http_methods():
     assert 'downloadBlob("/api/maintenance/diagnostics", "frp_diagnostics.zip", "GET")' in text
 
 
+def test_maintenance_has_clear_browser_cache_feature():
+    html = _read("maintenance.html")
+    script = _read("maintenance.js")
+    assert 'id="clear_browser_cache_btn"' in html
+    assert "clearBrowserCacheAndReload" in script
+    assert "localStorage.clear()" in script
+    assert "sessionStorage.clear()" in script
+    assert "caches.keys()" in script
+
+
 def test_pages_are_chinese_and_nav_no_english_labels():
     for page in ("index.html", "events.html", "alerts.html", "maintenance.html", "login.html"):
         text = _read(page)

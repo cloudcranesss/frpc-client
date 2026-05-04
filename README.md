@@ -109,10 +109,17 @@ docker build -t frp-web-client:latest .
 docker run -d \
   --name frp-web-client \
   -p 8000:8000 \
+  --add-host=host.docker.internal:host-gateway \
   -v /opt/frp_web_client_data:/app/data \
   --restart unless-stopped \
   frp-web-client:latest
 ```
+
+### 桥接网络访问宿主机说明
+
+- Docker 桥接网络下，容器内访问宿主机请优先使用 `host.docker.internal`，不要依赖宿主机当前局域网 IP（如 `192.168.x.x`）。
+- 本项目 `docker-compose.yml` 已内置 `extra_hosts: host.docker.internal:host-gateway`，用于 Linux 环境稳定解析宿主机网关。
+- 在 `frpc` 配置中如需回源到宿主机服务，建议直接填写 `host.docker.internal`。
 
 ## 镜像标签规则
 
