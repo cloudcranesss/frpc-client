@@ -34,6 +34,7 @@ def test_minimal_pages_and_core_routes_exist():
     assert "/api/maintenance/import/apply" in paths
     assert "/api/maintenance/diagnostics" in paths
     assert "/api/auth/profile" in paths
+    assert "/api/auth/login-form" in paths
     assert "/health/live" in paths
     assert "/health/ready" in paths
 

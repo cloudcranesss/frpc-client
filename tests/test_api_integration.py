@@ -101,6 +101,18 @@ def test_web_static_assets_disable_cache(client: TestClient):
     assert "no-cache" in cache_control
 
 
+def test_login_form_fallback_flow(client: TestClient):
+    resp = client.post(
+        "/api/auth/login-form",
+        data={"username": "admin", "password": "admin123456"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers.get("location") == "/"
+    cookie = resp.headers.get("set-cookie", "")
+    assert "frp_panel_session=" in cookie
+
+
 def test_maintenance_download_methods(client: TestClient):
     export_resp = client.post("/api/maintenance/export")
     assert export_resp.status_code == 200

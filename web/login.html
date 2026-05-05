@@ -25,20 +25,22 @@
       <section class="login-card">
         <h1>账号登录</h1>
         <p class="login-desc">请输入用户名与密码进入控制台。</p>
-        <div class="field">
-          <label for="username">用户名</label>
-          <input id="username" autocomplete="username" />
-        </div>
-        <div class="field">
-          <label for="password">密码</label>
-          <input id="password" type="password" autocomplete="current-password" />
-        </div>
-        <div class="actions two">
-          <button id="login_btn" class="btn primary">
-            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-login"></use></svg>
-            <span class="btn-label">登录</span>
-          </button>
-        </div>
+        <form id="login_form" method="post" action="/api/auth/login-form">
+          <div class="field">
+            <label for="username">用户名</label>
+            <input id="username" name="username" autocomplete="username" />
+          </div>
+          <div class="field">
+            <label for="password">密码</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" />
+          </div>
+          <div class="actions two">
+            <button id="login_btn" type="submit" class="btn primary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-login"></use></svg>
+              <span class="btn-label">登录</span>
+            </button>
+          </div>
+        </form>
         <p id="login_error" class="hint error"></p>
         <p class="login-tip">仅记录用户名，不会在浏览器保存密码。</p>
       </section>

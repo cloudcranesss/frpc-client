@@ -101,6 +101,8 @@ def test_login_page_remembers_last_username_only():
     assert "frp_panel_last_username" in text
     assert "setItem(LAST_USERNAME_KEY, username)" in text
     assert "不会在浏览器保存密码" in _read("login.html")
+    assert 'id="login_form"' in _read("login.html")
+    assert 'action="/api/auth/login-form"' in _read("login.html")
 
 
 def test_svg_sprite_exists_and_has_core_symbols():

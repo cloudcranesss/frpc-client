@@ -4,6 +4,7 @@ const LAST_USERNAME_KEY = "frp_panel_last_username";
 
 const els = {
   themeMode: document.querySelector("#theme_mode"),
+  loginForm: document.querySelector("#login_form"),
   username: document.querySelector("#username"),
   password: document.querySelector("#password"),
   loginBtn: document.querySelector("#login_btn"),
@@ -12,8 +13,12 @@ const els = {
 
 initThemePicker(els.themeMode);
 restoreLastUsername();
+renderFallbackError();
 
-els.loginBtn.addEventListener("click", submitLogin);
+els.loginForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitLogin();
+});
 els.password.addEventListener("keydown", (event) => {
   if (event.key === "Enter") submitLogin();
 });
@@ -23,6 +28,26 @@ checkAuthStatus();
 function restoreLastUsername() {
   const last = window.localStorage.getItem(LAST_USERNAME_KEY) || "";
   els.username.value = last;
+}
+
+function renderFallbackError() {
+  if (!els.loginError) return;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("error") || "";
+  if (!code) return;
+  if (code === "empty") {
+    els.loginError.textContent = "请输入用户名和密码。";
+    return;
+  }
+  if (code === "rate_limit") {
+    els.loginError.textContent = "登录失败次数过多，请稍后再试。";
+    return;
+  }
+  if (code === "invalid") {
+    els.loginError.textContent = "用户名或密码错误。";
+    return;
+  }
+  els.loginError.textContent = "登录失败，请稍后重试。";
 }
 
 async function checkAuthStatus() {

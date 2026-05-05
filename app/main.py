@@ -535,6 +535,39 @@ async def login(payload: LoginPayload, request: Request, response: Response) -> 
     return LoginResponse(success=True, username=username)
 
 
+@app.post("/api/auth/login-form")
+async def login_form(
+    request: Request,
+    response: Response,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    name = username.strip()
+    if not name or not password:
+        return RedirectResponse(url="/login?error=empty", status_code=303)
+    client_ip = request.client.host if request.client else "unknown"
+    allowed = await login_limiter.allow(client_ip, name)
+    if not allowed:
+        return RedirectResponse(url="/login?error=rate_limit", status_code=303)
+    ok = await auth_manager.verify_login(name, password)
+    if not ok:
+        return RedirectResponse(url="/login?error=invalid", status_code=303)
+
+    token = await auth_manager.create_session(name)
+    secure_cookie = os.getenv("FRP_PANEL_SECURE_COOKIE", "false").lower() in {"1", "true", "yes"}
+    redirect = RedirectResponse(url="/", status_code=303)
+    redirect.set_cookie(
+        key=auth_manager.cookie_name,
+        value=token,
+        max_age=60 * 60 * 24,
+        httponly=True,
+        samesite="lax",
+        secure=secure_cookie,
+        path="/",
+    )
+    return redirect
+
+
 @app.post("/api/auth/logout", response_model=LoginResponse)
 async def logout(request: Request, response: Response) -> LoginResponse:
     token = request.cookies.get(auth_manager.cookie_name)
