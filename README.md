@@ -1,6 +1,6 @@
 # FRP Web Client（Python Async）
 
-基于 `FastAPI + asyncio + SQLite + SSE` 的单用户 FRP 管理面板，面向 Docker 常驻场景。
+基于 `FastAPI + asyncio + JSON + SSE` 的单用户 FRP 管理面板，面向 Docker 常驻场景。
 
 ## 核心能力
 
@@ -71,7 +71,7 @@
 - 修改账号资料后会强制会话失效，需要重新登录
 - 登录页仅在本地记录上次用户名，不保存密码
 
-首启账号优先级（仅数据库为空时）：
+首启账号优先级（仅用户存储为空时）：
 
 1. `FRP_PANEL_INIT_USERNAME` + `FRP_PANEL_INIT_PASSWORD`
 2. 旧版 `data/auth.json` 迁移
@@ -80,7 +80,7 @@
 ## 健康检查
 
 - `GET /health/live`：进程存活
-- `GET /health/ready`：存储可用（SQLite 可读写、`data/` 可写、磁盘剩余空间满足阈值）
+- `GET /health/ready`：存储可用（`data/store.json` 可读写、`data/` 可写、磁盘剩余空间满足阈值）
 
 相关环境变量：
 
@@ -129,7 +129,7 @@ docker compose up -d
 
 `data/` 默认包含：
 
-- `app.db`：主数据库
+- `store.json`：主存储文件（客户端、告警、用户、会话、事件）
 - `configs/*.toml`：客户端配置落地副本
 - `*.bak`：历史 JSON/TOML 迁移备份
 

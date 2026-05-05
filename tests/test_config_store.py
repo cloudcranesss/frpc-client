@@ -34,7 +34,7 @@ async def test_legacy_client_json_migration(tmp_path: Path):
     assert len(state.clients) == 1
     assert state.clients[0].name == "legacy-client"
     assert state.clients[0].env == {"A": "1"}
-    assert (data_dir / "app.db").exists()
+    assert (data_dir / "store.json").exists()
     assert (data_dir / "client_config.json.bak").exists()
 
 
