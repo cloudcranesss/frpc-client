@@ -1,11 +1,6 @@
 services:
   frp-web-client:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        FRP_VERSION: ${FRP_VERSION:-0.68.0}
-    image: frp-web-client:latest
+    image: ghcr.nju.edu.cn/ghcr.io/cloudcranesss/frpc-client:latest
     container_name: frp-web-client
     restart: unless-stopped
     network_mode: host

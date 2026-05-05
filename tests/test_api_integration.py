@@ -93,6 +93,14 @@ def test_html_pages_inject_asset_version_and_disable_cache(client: TestClient):
         assert resp.headers.get("cache-control") == "no-cache, no-store, must-revalidate"
 
 
+def test_web_static_assets_disable_cache(client: TestClient):
+    resp = client.get("/web/shared.js")
+    assert resp.status_code == 200
+    cache_control = resp.headers.get("cache-control", "")
+    assert "no-store" in cache_control
+    assert "no-cache" in cache_control
+
+
 def test_maintenance_download_methods(client: TestClient):
     export_resp = client.post("/api/maintenance/export")
     assert export_resp.status_code == 200

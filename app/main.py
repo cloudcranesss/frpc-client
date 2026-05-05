@@ -440,7 +440,12 @@ app.mount("/web", StaticFiles(directory=WEB_DIR), name="web")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
     if _is_public_path(path):
-        return await call_next(request)
+        response = await call_next(request)
+        if path.startswith("/web/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
     username = await _authenticated_username(request)
     if username:

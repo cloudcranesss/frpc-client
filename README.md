@@ -114,7 +114,8 @@ python run.py
 启动：
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 ## 镜像标签规则
