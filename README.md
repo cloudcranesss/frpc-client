@@ -87,6 +87,7 @@
 - `FRP_PANEL_MIN_FREE_MB`：`/health/ready` 最小可用空间阈值（默认 `50`）
 - `FRP_PANEL_CORS_ORIGINS`：跨域白名单（默认同源）
 - `FRP_PANEL_SECURE_COOKIE`：是否启用 `Secure` Cookie（默认 `false`）
+- `FRP_PANEL_ASSET_VERSION`：前端静态资源版本戳（可选，建议发版时递增，用于强制浏览器更新 CSS/JS/SVG）
 
 ## 本地运行
 

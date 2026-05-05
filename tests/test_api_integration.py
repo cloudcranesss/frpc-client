@@ -83,6 +83,16 @@ def test_page_redirects_to_settings(client: TestClient):
         assert resp.headers["location"] == "/settings"
 
 
+def test_html_pages_inject_asset_version_and_disable_cache(client: TestClient):
+    for path in ("/", "/settings", "/login"):
+        resp = client.get(path)
+        assert resp.status_code == 200
+        assert "__ASSET_VERSION__" not in resp.text
+        assert "/web/style.css?v=" in resp.text
+        assert "/web/shared.js?v=" in resp.text
+        assert resp.headers.get("cache-control") == "no-cache, no-store, must-revalidate"
+
+
 def test_maintenance_download_methods(client: TestClient):
     export_resp = client.post("/api/maintenance/export")
     assert export_resp.status_code == 200

@@ -1,5 +1,20 @@
 const THEME_KEY = "frp_panel_theme_mode";
 
+function applySvgAssetVersion() {
+  const version = (document.body?.dataset.assetVersion || "").trim();
+  if (!version) return;
+  const encoded = encodeURIComponent(version);
+  for (const useEl of document.querySelectorAll('use[href^="/web/icons.svg#"], use[xlink\\:href^="/web/icons.svg#"]')) {
+    const current = useEl.getAttribute("href") || useEl.getAttribute("xlink:href") || "";
+    if (!current || current.includes("?v=")) continue;
+    const hashIndex = current.indexOf("#");
+    const fragment = hashIndex >= 0 ? current.slice(hashIndex) : "";
+    const versioned = `/web/icons.svg?v=${encoded}${fragment}`;
+    useEl.setAttribute("href", versioned);
+    useEl.setAttribute("xlink:href", versioned);
+  }
+}
+
 function getPreferredThemeMode() {
   const value = window.localStorage.getItem(THEME_KEY);
   if (value === "light" || value === "dark" || value === "system") {
@@ -30,6 +45,7 @@ export function applyMotionMode() {
 }
 
 export function initThemePicker(selectEl) {
+  applySvgAssetVersion();
   applyMotionMode();
   const current = getPreferredThemeMode();
   applyThemeMode(current);

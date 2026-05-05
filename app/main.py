@@ -12,7 +12,7 @@ import tomllib
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .alert_manager import AlertManager
@@ -64,6 +64,8 @@ from .schemas import (
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 WEB_DIR = BASE_DIR / "web"
+APP_VERSION = "0.3.0"
+ASSET_VERSION = os.getenv("FRP_PANEL_ASSET_VERSION", APP_VERSION).strip() or APP_VERSION
 
 config_store = ConfigStore(DATA_DIR)
 alert_manager = AlertManager(config_store)
@@ -389,6 +391,19 @@ def _sse_message(event: str, data: object) -> str:
     return f"event: {event}\ndata: {payload}\n\n"
 
 
+def _render_page(filename: str) -> HTMLResponse:
+    content = (WEB_DIR / filename).read_text(encoding="utf-8")
+    content = content.replace("__ASSET_VERSION__", ASSET_VERSION)
+    return HTMLResponse(
+        content=content,
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await config_store.init()
@@ -402,7 +417,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="FRP Web Client",
-    version="0.3.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -455,8 +470,8 @@ async def health_ready() -> dict[str, str]:
 
 
 @app.get("/")
-async def home() -> FileResponse:
-    return FileResponse(WEB_DIR / "index.html")
+async def home() -> HTMLResponse:
+    return _render_page("index.html")
 
 
 @app.get("/events")
@@ -475,8 +490,8 @@ async def maintenance_page() -> RedirectResponse:
 
 
 @app.get("/settings")
-async def settings_page() -> FileResponse:
-    return FileResponse(WEB_DIR / "settings.html")
+async def settings_page() -> HTMLResponse:
+    return _render_page("settings.html")
 
 
 @app.get("/login")
@@ -484,7 +499,7 @@ async def login_page(request: Request):
     username = await _authenticated_username(request)
     if username:
         return RedirectResponse(url="/", status_code=302)
-    return FileResponse(WEB_DIR / "login.html")
+    return _render_page("login.html")
 
 
 @app.post("/api/auth/login", response_model=LoginResponse)

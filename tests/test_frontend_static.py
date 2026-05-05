@@ -15,7 +15,8 @@ def test_pages_include_theme_picker_and_shared_runtime():
     for page in ("index.html", "settings.html", "login.html"):
         text = _read(page)
         assert 'id="theme_mode"' in text
-        assert '<script src="/web/shared.js" type="module"></script>' in text
+        assert '<script src="/web/shared.js?v=__ASSET_VERSION__" type="module"></script>' in text
+        assert 'data-asset-version="__ASSET_VERSION__"' in text
         assert "data-page=" in text
 
 

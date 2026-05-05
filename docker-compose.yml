@@ -11,6 +11,7 @@ services:
     environment:
       - FRP_PANEL_SECURE_COOKIE=false
       - FRP_PANEL_PORT=8000
+      - FRP_PANEL_ASSET_VERSION=${FRP_PANEL_ASSET_VERSION:-20260505-1}
     volumes:
       - ./data:/app/data
     healthcheck:
