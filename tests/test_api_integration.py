@@ -167,6 +167,32 @@ def test_preflight_then_force_start_flow(client: TestClient, monkeypatch: pytest
     assert "preflight_forced" in event_types
 
 
+def test_jump_links_follow_client_config(client: TestClient):
+    client_id = _first_client_id(client)
+    cfg_resp = client.get(f"/api/clients/{client_id}/config")
+    assert cfg_resp.status_code == 200
+    cfg = cfg_resp.json()
+    cfg["config_text"] = (
+        'serverAddr = "frp.example.com"\n'
+        "serverPort = 7000\n\n"
+        "[[proxies]]\n"
+        'name = "web-http"\n'
+        'type = "http"\n'
+        "localPort = 8080\n"
+        "remotePort = 8088\n"
+    )
+    put_resp = client.put(f"/api/clients/{client_id}/config", json=cfg)
+    assert put_resp.status_code == 200
+
+    links = client.get(f"/api/clients/{client_id}/jump-links")
+    assert links.status_code == 200
+    items = links.json()["items"]
+    assert len(items) == 1
+    assert items[0]["proxy_name"] == "web-http"
+    assert items[0]["proxy_type"] == "http"
+    assert items[0]["url"] == "http://frp.example.com:8088"
+
+
 def test_auth_profile_update_requires_relogin_and_new_credentials_work(client: TestClient):
     profile = client.get("/api/auth/profile")
     assert profile.status_code == 200

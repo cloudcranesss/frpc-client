@@ -7,6 +7,8 @@ const els = {
   hint: document.querySelector("#hint"),
   statusMeta: document.querySelector("#status_meta"),
   statusPill: document.querySelector("#status-pill"),
+  jumpCount: document.querySelector("#jump_count"),
+  jumpLinks: document.querySelector("#jump_links"),
   clientList: document.querySelector("#client_list"),
   addClientBtn: document.querySelector("#add_client_btn"),
   deleteClientBtn: document.querySelector("#delete_client_btn"),
@@ -95,6 +97,38 @@ function appendLogLine(line) {
   els.logs.scrollTop = els.logs.scrollHeight;
 }
 
+function renderJumpLinks(items, errorMessage = "") {
+  if (!els.jumpLinks || !els.jumpCount) return;
+  els.jumpCount.textContent = String(items.length);
+  els.jumpLinks.innerHTML = "";
+
+  if (errorMessage) {
+    const row = document.createElement("div");
+    row.className = "jump-empty";
+    row.textContent = errorMessage;
+    els.jumpLinks.appendChild(row);
+    return;
+  }
+
+  if (items.length === 0) {
+    const row = document.createElement("div");
+    row.className = "jump-empty";
+    row.textContent = "暂无可跳转链接。";
+    els.jumpLinks.appendChild(row);
+    return;
+  }
+
+  for (const item of items) {
+    const box = document.createElement("div");
+    box.className = "jump-link-item";
+    box.innerHTML = `
+      <div class="jump-link-title">${escapeHtml(item.proxy_name || "-")} · ${escapeHtml(item.proxy_type || "-")}</div>
+      <a class="jump-link-url" href="${escapeHtml(item.url || "#")}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url || "-")}</a>
+    `;
+    els.jumpLinks.appendChild(box);
+  }
+}
+
 function renderClients() {
   if (!els.clientList) return;
   els.clientList.innerHTML = "";
@@ -143,6 +177,19 @@ async function loadStatusAndLogs() {
   if (!els.logs) return;
   els.logs.textContent = (logs.items || []).join("\n");
   els.logs.scrollTop = els.logs.scrollHeight;
+}
+
+async function loadJumpLinks() {
+  if (!state.activeClientId) {
+    renderJumpLinks([]);
+    return;
+  }
+  try {
+    const payload = await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/jump-links`);
+    renderJumpLinks(payload.items || []);
+  } catch (error) {
+    renderJumpLinks([], `跳转链接加载失败: ${error.message}`);
+  }
 }
 
 function closeStream() {
@@ -200,7 +247,14 @@ function connectStream() {
 function hidePreflightPanel() {
   if (!els.preflightPanel) return;
   els.preflightPanel.classList.add("hidden");
-  if (!els.preflightForceBtn || !els.preflightErrorsWrap || !els.preflightWarningsWrap || !els.preflightErrors || !els.preflightWarnings || !els.preflightSummary) {
+  if (
+    !els.preflightForceBtn ||
+    !els.preflightErrorsWrap ||
+    !els.preflightWarningsWrap ||
+    !els.preflightErrors ||
+    !els.preflightWarnings ||
+    !els.preflightSummary
+  ) {
     return;
   }
   els.preflightForceBtn.classList.add("hidden");
@@ -212,7 +266,15 @@ function hidePreflightPanel() {
 }
 
 function showPreflightPanel(payload) {
-  if (!els.preflightPanel || !els.preflightSummary || !els.preflightErrorsWrap || !els.preflightErrors || !els.preflightWarningsWrap || !els.preflightWarnings || !els.preflightForceBtn) {
+  if (
+    !els.preflightPanel ||
+    !els.preflightSummary ||
+    !els.preflightErrorsWrap ||
+    !els.preflightErrors ||
+    !els.preflightWarningsWrap ||
+    !els.preflightWarnings ||
+    !els.preflightForceBtn
+  ) {
     return;
   }
   const errors = payload.errors || [];
@@ -251,7 +313,7 @@ async function startClient(force = false) {
   await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/start?force=${force ? "true" : "false"}`, "POST");
   setHint(force ? "已强制启动请求。" : "已启动。", "info");
   hidePreflightPanel();
-  await Promise.all([loadClients(), loadStatusAndLogs()]);
+  await Promise.all([loadClients(), loadStatusAndLogs(), loadJumpLinks()]);
 }
 
 async function runPreflightAndStart() {
@@ -278,7 +340,7 @@ async function saveConfig() {
     env: {},
   });
   setHint("配置已保存。", "info");
-  await loadClients();
+  await Promise.all([loadClients(), loadJumpLinks()]);
 }
 
 async function autoDetectFrpcPath() {
@@ -289,7 +351,7 @@ async function autoDetectFrpcPath() {
   if (payload.selected_exists) {
     setHint(`已选择自动路径: ${payload.selected_path}`, "info");
   } else {
-    setHint(`未检测到可用 frpc，建议手动设置路径。`, "warn");
+    setHint("未检测到可用 frpc，建议手动设置路径。", "warn");
   }
 }
 
@@ -311,7 +373,7 @@ function bindEvents() {
       await request(`/api/clients/${encodeURIComponent(clientId)}/select`, "POST");
       state.activeClientId = clientId;
       hidePreflightPanel();
-      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs()]);
+      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs(), loadJumpLinks()]);
       connectStream();
     } catch (error) {
       setHint(`切换客户端失败: ${error.message}`, "error");
@@ -322,7 +384,7 @@ function bindEvents() {
     try {
       const payload = await request("/api/clients", "POST", { name: "" });
       state.activeClientId = payload.active_client_id || state.activeClientId;
-      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs()]);
+      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs(), loadJumpLinks()]);
       connectStream();
       setHint("已新增客户端。", "info");
     } catch (error) {
@@ -338,7 +400,7 @@ function bindEvents() {
     try {
       const payload = await request(`/api/clients/${encodeURIComponent(state.activeClientId)}`, "DELETE");
       state.activeClientId = payload.active_client_id || payload.clients?.[0]?.id || "";
-      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs()]);
+      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs(), loadJumpLinks()]);
       connectStream();
       setHint("客户端已删除。", "info");
     } catch (error) {
@@ -360,14 +422,14 @@ function bindEvents() {
     try {
       await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/stop`, "POST");
       setHint("已停止。", "info");
-      await Promise.all([loadClients(), loadStatusAndLogs()]);
+      await Promise.all([loadClients(), loadStatusAndLogs(), loadJumpLinks()]);
     } catch (error) {
       setHint(`停止失败: ${error.message}`, "error");
     }
   });
   els.refreshBtn?.addEventListener("click", async () => {
     try {
-      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs()]);
+      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs(), loadJumpLinks()]);
       setHint("已刷新。", "info");
     } catch (error) {
       setHint(`刷新失败: ${error.message}`, "error");
@@ -388,12 +450,13 @@ async function init() {
   const auth = await requireAuth();
   setUserBadge(els.userBadge, auth.username);
   bindEvents();
-  await Promise.all([loadClients()]);
+  await loadClients();
   if (!state.activeClientId) {
+    renderJumpLinks([]);
     setHint("暂无客户端，请先新增。", "warn");
     return;
   }
-  await Promise.all([loadActiveConfig(), loadStatusAndLogs()]);
+  await Promise.all([loadActiveConfig(), loadStatusAndLogs(), loadJumpLinks()]);
   connectStream();
 }
 

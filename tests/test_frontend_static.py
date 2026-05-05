@@ -41,6 +41,8 @@ def test_old_page_files_removed():
 def test_dashboard_contains_collapsed_logs_and_preflight_panel():
     text = _read("index.html")
     assert 'id="auto_start"' in text
+    assert 'id="jump_links"' in text
+    assert 'id="jump_count"' in text
     assert 'id="logs_toggle_btn"' in text
     assert 'id="logs_toggle_label"' in text
     assert 'id="logs" class="logs hidden"' in text
@@ -122,3 +124,10 @@ def test_dynamic_action_buttons_support_svg_click_target():
     dashboard = _read("dashboard.js")
     assert 'closest("button[data-action]")' in settings
     assert 'closest("button[data-client-id]")' in dashboard
+
+
+def test_dashboard_uses_jump_links_api_with_safe_open():
+    dashboard = _read("dashboard.js")
+    assert "/jump-links" in dashboard
+    assert 'target="_blank"' in dashboard
+    assert 'rel="noopener noreferrer"' in dashboard
