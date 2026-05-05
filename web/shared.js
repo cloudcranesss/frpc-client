@@ -31,18 +31,17 @@ export function applyMotionMode() {
 
 export function initThemePicker(selectEl) {
   applyMotionMode();
-  if (!selectEl) {
-    applyThemeMode(getPreferredThemeMode());
-    return;
-  }
   const current = getPreferredThemeMode();
-  selectEl.value = current;
   applyThemeMode(current);
+  if (!selectEl) return;
+
+  selectEl.value = current;
   selectEl.addEventListener("change", () => {
     const value = selectEl.value;
     window.localStorage.setItem(THEME_KEY, value);
     applyThemeMode(value);
   });
+
   const colorMedia = window.matchMedia("(prefers-color-scheme: dark)");
   colorMedia.addEventListener("change", () => {
     if (getPreferredThemeMode() === "system") {
@@ -79,13 +78,13 @@ function formatErrorDetail(detail) {
 }
 
 export async function request(url, method = "GET", body = null) {
-  const response = await fetch(url, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : null,
-  });
+  const headers = {};
+  let payload = null;
+  if (body !== null && body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    payload = JSON.stringify(body);
+  }
+  const response = await fetch(url, { method, headers, body: payload });
   if (response.status === 401) {
     window.location.replace("/login");
     throw new Error("未登录或会话已失效。");
@@ -93,8 +92,8 @@ export async function request(url, method = "GET", body = null) {
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
     try {
-      const payload = await response.json();
-      detail = formatErrorDetail(payload.detail ?? payload) || detail;
+      const parsed = await response.json();
+      detail = formatErrorDetail(parsed.detail ?? parsed) || detail;
     } catch {
       // ignore
     }

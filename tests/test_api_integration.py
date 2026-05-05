@@ -26,6 +26,11 @@ def _build_import_zip() -> bytes:
             "on_restart_threshold": True,
             "restart_threshold": 3,
         },
+        # legacy keys from old versions should be ignored
+        "templates": [],
+        "snapshots": [],
+        "audit_logs": [],
+        "maintenance_state": {"read_only": False},
     }
     with zipfile.ZipFile(buff, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("manifest.json", json.dumps(payload, ensure_ascii=False))
@@ -62,6 +67,22 @@ def _first_client_id(client: TestClient) -> str:
     return str(rows[0]["id"])
 
 
+def test_low_frequency_endpoints_removed(client: TestClient):
+    assert client.get("/api/templates").status_code == 404
+    assert client.get("/api/audit/logs").status_code == 404
+    assert client.get("/api/maintenance/snapshots").status_code == 404
+    assert client.post("/api/maintenance/snapshots/rollback", json={"snapshot_id": 1}).status_code == 404
+    assert client.get("/api/maintenance/state").status_code == 404
+    assert client.put("/api/maintenance/read-only", json={"enabled": True}).status_code == 404
+
+
+def test_page_redirects_to_settings(client: TestClient):
+    for path in ("/events", "/alerts", "/maintenance"):
+        resp = client.get(path, follow_redirects=False)
+        assert resp.status_code in {302, 307}
+        assert resp.headers["location"] == "/settings"
+
+
 def test_maintenance_download_methods(client: TestClient):
     export_resp = client.post("/api/maintenance/export")
     assert export_resp.status_code == 200
@@ -72,7 +93,7 @@ def test_maintenance_download_methods(client: TestClient):
     assert diagnostics_resp.headers["content-type"].startswith("application/zip")
 
 
-def test_import_apply_invalid_mode_returns_structured_detail_and_audit(client: TestClient):
+def test_import_apply_invalid_mode_returns_structured_detail(client: TestClient):
     bundle = _build_import_zip()
     resp = client.post(
         "/api/maintenance/import/apply?mode=bad",
@@ -83,11 +104,26 @@ def test_import_apply_invalid_mode_returns_structured_detail_and_audit(client: T
     assert isinstance(detail, dict)
     assert detail.get("message")
     assert detail.get("mode") == "bad"
+    assert detail.get("allowed") == ["overwrite", "merge"]
 
-    logs = client.get("/api/audit/logs?limit=200")
-    assert logs.status_code == 200
-    items = logs.json()["items"]
-    assert any(item["action"] == "maintenance_import_apply_failed" and item["target"] == "mode" for item in items)
+
+def test_import_apply_accepts_legacy_keys_and_ignores_them(client: TestClient):
+    bundle = _build_import_zip()
+    resp = client.post(
+        "/api/maintenance/import/apply?mode=merge",
+        files={"file": ("bundle.zip", bundle, "application/zip")},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+
+    exported = client.post("/api/maintenance/export")
+    assert exported.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(exported.content), "r") as zf:
+        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+    assert "templates" not in manifest
+    assert "snapshots" not in manifest
+    assert "audit_logs" not in manifest
+    assert "maintenance_state" not in manifest
 
 
 def test_preflight_then_force_start_flow(client: TestClient, monkeypatch: pytest.MonkeyPatch):
@@ -129,17 +165,6 @@ def test_preflight_then_force_start_flow(client: TestClient, monkeypatch: pytest
     event_types = [item["event_type"] for item in events.json()["items"]]
     assert "preflight_failed" in event_types
     assert "preflight_forced" in event_types
-
-    audits = client.get("/api/audit/logs?limit=500")
-    assert audits.status_code == 200
-    rows = audits.json()["items"]
-    assert any(item["action"] == "preflight_client" and item["target"] == client_id for item in rows)
-    assert any(
-        item["action"] == "start_client"
-        and item["target"] == client_id
-        and bool(item.get("detail", {}).get("force"))
-        for item in rows
-    )
 
 
 def test_auth_profile_update_requires_relogin_and_new_credentials_work(client: TestClient):

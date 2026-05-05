@@ -204,7 +204,6 @@ def system_diagnostics(data_dir: Path, events: list[dict[str, Any]], bundle: dic
                     if isinstance(item, dict)
                 ],
                 "alert_rules": bundle.get("alert_rules", {}),
-                "templates_count": len(list(bundle.get("templates") or [])),
             }
         ),
     }

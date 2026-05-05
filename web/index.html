@@ -10,17 +10,11 @@
     <header class="site-header">
       <div class="brand">
         <h1>FRP 面板</h1>
-        <p>轻量多客户端管理</p>
-        <div class="brand-meta">
-          <span class="ui-version-badge">UI v2</span>
-          <button id="ui_changes_btn" class="ui-changes-link" type="button">最近变更</button>
-        </div>
+        <p>轻量客户端管理</p>
       </div>
       <nav class="nav-tabs" aria-label="主导航">
         <a href="/" data-nav="dashboard">控制台</a>
-        <a href="/events" data-nav="events">运行事件</a>
-        <a href="/alerts" data-nav="alerts">告警设置</a>
-        <a href="/maintenance" data-nav="maintenance">维护工具</a>
+        <a href="/settings" data-nav="settings">设置</a>
       </nav>
       <div class="head-actions">
         <select id="theme_mode" class="theme-select" aria-label="主题模式">
@@ -29,7 +23,10 @@
           <option value="dark">深色主题</option>
         </select>
         <span id="user_badge" class="user-badge">未登录</span>
-        <button id="logout_btn" class="btn danger small">退出登录</button>
+        <button id="logout_btn" class="btn danger small">
+          <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-logout"></use></svg>
+          <span class="btn-label">退出登录</span>
+        </button>
       </div>
     </header>
 
@@ -43,7 +40,7 @@
           </div>
           <div class="field">
             <label for="frpc_path">frpc 路径</label>
-            <input id="frpc_path" placeholder="例如: bin/windows/frpc.exe 或 frpc" />
+            <input id="frpc_path" placeholder="例如: bin/linux/frpc 或 frpc" />
           </div>
           <div class="field">
             <label for="run_args">运行参数</label>
@@ -54,16 +51,35 @@
             <textarea id="config_text" rows="12"></textarea>
           </div>
           <div class="actions">
-            <button id="auto_path_btn" class="btn secondary">自动路径</button>
-            <button id="save_btn" class="btn secondary">保存配置</button>
-            <button id="start_btn" class="btn primary">启动</button>
-            <button id="stop_btn" class="btn danger">停止</button>
-            <button id="refresh_btn" class="btn">刷新</button>
+            <button id="auto_path_btn" class="btn secondary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-magic"></use></svg>
+              <span class="btn-label">自动路径</span>
+            </button>
+            <button id="save_btn" class="btn secondary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-save"></use></svg>
+              <span class="btn-label">保存配置</span>
+            </button>
+            <button id="start_btn" class="btn primary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-play"></use></svg>
+              <span class="btn-label">启动</span>
+            </button>
+            <button id="stop_btn" class="btn danger">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-stop"></use></svg>
+              <span class="btn-label">停止</span>
+            </button>
+            <button id="refresh_btn" class="btn">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
+              <span class="btn-label">刷新</span>
+            </button>
           </div>
+
           <section id="preflight_panel" class="preflight-panel hidden" aria-live="polite">
             <div class="panel-head">
               <h3>启动前预检</h3>
-              <button id="preflight_close_btn" class="btn ghost small">关闭</button>
+              <button id="preflight_close_btn" class="btn ghost small">
+                <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-close"></use></svg>
+                <span class="btn-label">关闭</span>
+              </button>
             </div>
             <p id="preflight_summary" class="hint info"></p>
             <div id="preflight_errors_wrap" class="preflight-block hidden">
@@ -75,83 +91,52 @@
               <ul id="preflight_warnings" class="preflight-list"></ul>
             </div>
             <div class="actions two">
-              <button id="preflight_force_btn" class="btn danger hidden">忽略错误并强制启动</button>
+              <button id="preflight_force_btn" class="btn danger hidden">
+                <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-force"></use></svg>
+                <span class="btn-label">忽略错误并强制启动</span>
+              </button>
             </div>
           </section>
           <p id="hint" class="hint info"></p>
         </section>
 
         <section class="panel reveal">
-          <h2>运行日志</h2>
-          <pre id="logs" class="logs"></pre>
+          <div class="panel-head">
+            <h2>实时日志</h2>
+            <button id="logs_toggle_btn" class="btn secondary small">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
+              <span id="logs_toggle_label" class="btn-label">展开日志</span>
+            </button>
+          </div>
+          <pre id="logs" class="logs hidden"></pre>
         </section>
       </section>
 
       <aside class="dashboard-side">
         <section class="panel compact reveal">
           <div class="panel-head">
-            <h2>状态与服务</h2>
+            <h2>运行状态</h2>
             <div id="status-pill" class="pill offline">未运行</div>
           </div>
-          <div class="jump-header">
-            <span>可跳转服务</span>
-            <span id="jump_count" class="jump-count">0</span>
-          </div>
-          <div id="jump_links" class="jump-links"></div>
+          <p id="status_meta" class="hint info"></p>
         </section>
 
         <section class="panel sidebar reveal">
           <div class="panel-head">
             <h2>客户端列表</h2>
-            <button id="add_client_btn" class="btn secondary small">新增</button>
+            <button id="add_client_btn" class="btn secondary small">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-plus"></use></svg>
+              <span class="btn-label">新增</span>
+            </button>
           </div>
           <div id="client_list" class="client-list"></div>
-          <button id="delete_client_btn" class="btn danger">删除当前客户端</button>
-        </section>
-
-        <section class="panel reveal">
-          <div class="panel-head">
-            <h2>账号设置</h2>
-          </div>
-          <div class="field">
-            <label for="account_new_username">新用户名</label>
-            <input id="account_new_username" placeholder="不改可留空" />
-          </div>
-          <div class="field">
-            <label for="account_current_password">当前密码</label>
-            <input id="account_current_password" type="password" autocomplete="current-password" />
-          </div>
-          <div class="field">
-            <label for="account_new_password">新密码</label>
-            <input id="account_new_password" type="password" autocomplete="new-password" />
-          </div>
-          <div class="field">
-            <label for="account_confirm_password">确认新密码</label>
-            <input id="account_confirm_password" type="password" autocomplete="new-password" />
-          </div>
-          <p id="account_policy" class="hint info">密码至少8位，且必须同时包含字母和数字。</p>
-          <p id="account_strength" class="hint info"></p>
-          <div class="actions two">
-            <button id="account_save_btn" class="btn secondary">保存账号设置</button>
-          </div>
+          <button id="delete_client_btn" class="btn danger">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-trash"></use></svg>
+            <span class="btn-label">删除当前客户端</span>
+          </button>
         </section>
       </aside>
     </main>
-
-    <section id="ui_notice_modal" class="ui-notice-backdrop hidden" aria-live="polite" aria-modal="true" role="dialog">
-      <div class="ui-notice-card">
-        <h2>界面更新说明（UI v2）</h2>
-        <p>当前已启用新版界面，导航结构与账号设置入口均有调整。</p>
-        <ul class="ui-notice-list">
-          <li>顶部导航改为：控制台 / 运行事件 / 告警设置 / 维护工具。</li>
-          <li>账号设置已移动到控制台右侧栏，支持用户名与密码管理。</li>
-          <li>本提示仅首次显示一次，可通过“最近变更”再次查看。</li>
-        </ul>
-        <div class="actions two">
-          <button id="ui_notice_close_btn" class="btn primary" type="button">我知道了</button>
-        </div>
-      </div>
-    </section>
 
     <script src="/web/shared.js" type="module"></script>
     <script src="/web/dashboard.js" type="module"></script>

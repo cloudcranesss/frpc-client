@@ -156,69 +156,9 @@ class PreflightResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
-
-class TemplatePayload(BaseModel):
-    name: str
-    tags: list[str] = Field(default_factory=list)
-    content: str
-    source_client_id: str | None = None
-
-
-class TemplateResponse(BaseModel):
-    id: int
-    name: str
-    tags: list[str]
-    content: str
-    variables: list[str]
-    source_client_id: str | None = None
-    version: int
-    last_used_at: float | None = None
-    created_at: float
-    updated_at: float
-
-
-class TemplatesResponse(BaseModel):
-    items: list[TemplateResponse]
-
-
-class MaintenanceReadOnlyPayload(BaseModel):
-    enabled: bool
-
-
-class MaintenanceStateResponse(BaseModel):
-    read_only: bool
-    snapshot_max_keep: int
-
-
 class ImportPreviewResponse(BaseModel):
     schema_version: int
     import_client_count: int
     conflicts: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     ready: bool
-
-
-class SnapshotItem(BaseModel):
-    id: int
-    reason: str
-    created_at: float
-
-
-class SnapshotsResponse(BaseModel):
-    items: list[SnapshotItem]
-
-
-class SnapshotRollbackPayload(BaseModel):
-    snapshot_id: int
-
-
-class AuditLogItem(BaseModel):
-    id: int
-    action: str
-    target: str
-    detail: dict[str, object] = Field(default_factory=dict)
-    created_at: float
-
-
-class AuditLogsResponse(BaseModel):
-    items: list[AuditLogItem]

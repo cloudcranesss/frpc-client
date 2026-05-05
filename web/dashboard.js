@@ -2,11 +2,14 @@ import { escapeHtml, initThemePicker, logout, markActiveNav, request, requireAut
 
 const els = {
   themeMode: document.querySelector("#theme_mode"),
+  userBadge: document.querySelector("#user_badge"),
+  logoutBtn: document.querySelector("#logout_btn"),
+  hint: document.querySelector("#hint"),
+  statusMeta: document.querySelector("#status_meta"),
+  statusPill: document.querySelector("#status-pill"),
   clientList: document.querySelector("#client_list"),
   addClientBtn: document.querySelector("#add_client_btn"),
   deleteClientBtn: document.querySelector("#delete_client_btn"),
-  userBadge: document.querySelector("#user_badge"),
-  logoutBtn: document.querySelector("#logout_btn"),
   clientName: document.querySelector("#client_name"),
   frpcPath: document.querySelector("#frpc_path"),
   runArgs: document.querySelector("#run_args"),
@@ -16,267 +19,127 @@ const els = {
   startBtn: document.querySelector("#start_btn"),
   stopBtn: document.querySelector("#stop_btn"),
   refreshBtn: document.querySelector("#refresh_btn"),
-  hint: document.querySelector("#hint"),
+  logs: document.querySelector("#logs"),
+  logsToggleBtn: document.querySelector("#logs_toggle_btn"),
+  logsToggleLabel: document.querySelector("#logs_toggle_label"),
   preflightPanel: document.querySelector("#preflight_panel"),
+  preflightCloseBtn: document.querySelector("#preflight_close_btn"),
   preflightSummary: document.querySelector("#preflight_summary"),
   preflightErrorsWrap: document.querySelector("#preflight_errors_wrap"),
   preflightErrors: document.querySelector("#preflight_errors"),
   preflightWarningsWrap: document.querySelector("#preflight_warnings_wrap"),
   preflightWarnings: document.querySelector("#preflight_warnings"),
   preflightForceBtn: document.querySelector("#preflight_force_btn"),
-  preflightCloseBtn: document.querySelector("#preflight_close_btn"),
-  logs: document.querySelector("#logs"),
-  jumpCount: document.querySelector("#jump_count"),
-  jumpLinks: document.querySelector("#jump_links"),
-  statusPill: document.querySelector("#status-pill"),
-  accountNewUsername: document.querySelector("#account_new_username"),
-  accountCurrentPassword: document.querySelector("#account_current_password"),
-  accountNewPassword: document.querySelector("#account_new_password"),
-  accountConfirmPassword: document.querySelector("#account_confirm_password"),
-  accountPolicy: document.querySelector("#account_policy"),
-  accountStrength: document.querySelector("#account_strength"),
-  accountSaveBtn: document.querySelector("#account_save_btn"),
-  uiChangesBtn: document.querySelector("#ui_changes_btn"),
-  uiNoticeModal: document.querySelector("#ui_notice_modal"),
-  uiNoticeCloseBtn: document.querySelector("#ui_notice_close_btn"),
 };
 
 const state = {
-  activeClientId: null,
   clients: [],
+  activeClientId: "",
+  logsExpanded: false,
   eventSource: null,
   reconnectDelaySec: 1,
   reconnectTimer: null,
   streamToken: 0,
 };
 
-const UI_NOTICE_KEY = "frp_ui_notice_dismissed_v2";
-
-const api = {
-  async authProfile() {
-    return request("/api/auth/profile");
-  },
-  async updateAuthProfile(payload) {
-    return request("/api/auth/profile", "PUT", payload);
-  },
-  async listClients() {
-    return request("/api/clients");
-  },
-  async createClient(name) {
-    return request("/api/clients", "POST", { name });
-  },
-  async selectClient(clientId) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}/select`, "POST");
-  },
-  async deleteClient(clientId) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}`, "DELETE");
-  },
-  async getClientConfig(clientId) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}/config`);
-  },
-  async saveClientConfig(clientId, payload) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}/config`, "PUT", payload);
-  },
-  async autoFrpcPath(clientId) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}/frpc-path/auto`);
-  },
-  async preflight(clientId) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}/preflight`, "POST");
-  },
-  async start(clientId, force = false) {
-    const query = force ? "?force=true" : "";
-    return request(`/api/clients/${encodeURIComponent(clientId)}/start${query}`, "POST");
-  },
-  async stop(clientId) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}/stop`, "POST");
-  },
-  async status(clientId) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}/status`);
-  },
-  async logs(clientId, limit = 120) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}/logs?limit=${limit}`);
-  },
-  async jumpLinks(clientId) {
-    return request(`/api/clients/${encodeURIComponent(clientId)}/jump-links`);
-  },
-};
-
 function setHint(text, level = "info") {
+  if (!els.hint) return;
   els.hint.textContent = text;
   els.hint.classList.remove("info", "warn", "error");
   els.hint.classList.add(level);
 }
 
-function showUiNoticeModal() {
-  els.uiNoticeModal?.classList.remove("hidden");
+function setStatusMeta(text, level = "info") {
+  if (!els.statusMeta) return;
+  els.statusMeta.textContent = text;
+  els.statusMeta.classList.remove("info", "warn", "error");
+  els.statusMeta.classList.add(level);
 }
 
-function hideUiNoticeModal(markDismissed = false) {
-  els.uiNoticeModal?.classList.add("hidden");
-  if (!markDismissed) return;
-  try {
-    window.localStorage.setItem(UI_NOTICE_KEY, "1");
-  } catch (_error) {
-    // Ignore localStorage failures and continue without persistence.
+function setStatus(status) {
+  if (!els.statusPill) return;
+  const running = !!status.running;
+  els.statusPill.textContent = running ? "运行中" : "未运行";
+  els.statusPill.classList.toggle("online", running);
+  els.statusPill.classList.toggle("offline", !running);
+
+  const parts = [];
+  if (status.pid) parts.push(`PID: ${status.pid}`);
+  parts.push(`重启次数: ${status.restart_count || 0}`);
+  if (!running && status.last_exit_code !== null && status.last_exit_code !== undefined) {
+    parts.push(`退出码: ${status.last_exit_code}`);
   }
-}
-
-function evaluatePasswordStrength(value) {
-  const text = String(value || "");
-  if (!text) return { ok: false, message: "留空表示不修改密码。" };
-  const longEnough = text.length >= 8;
-  const hasAlpha = /[A-Za-z]/.test(text);
-  const hasDigit = /\d/.test(text);
-  if (longEnough && hasAlpha && hasDigit) {
-    return { ok: true, message: "密码强度符合要求。" };
-  }
-  return { ok: false, message: "密码至少8位，且必须同时包含字母和数字。" };
-}
-
-function updatePasswordHint() {
-  const result = evaluatePasswordStrength(els.accountNewPassword.value);
-  els.accountStrength.textContent = result.message;
-  els.accountStrength.classList.remove("info", "warn", "error");
-  els.accountStrength.classList.add(result.ok ? "info" : "warn");
-}
-
-function setListItems(listEl, items) {
-  listEl.innerHTML = "";
-  for (const text of items) {
-    const li = document.createElement("li");
-    li.textContent = text;
-    listEl.appendChild(li);
-  }
-}
-
-function hidePreflightPanel() {
-  els.preflightPanel.classList.add("hidden");
-  els.preflightSummary.textContent = "";
-  els.preflightErrorsWrap.classList.add("hidden");
-  els.preflightWarningsWrap.classList.add("hidden");
-  els.preflightForceBtn.classList.add("hidden");
-  els.preflightErrors.innerHTML = "";
-  els.preflightWarnings.innerHTML = "";
-}
-
-function showPreflightPanel(preflight) {
-  const errors = Array.isArray(preflight.errors) ? preflight.errors : [];
-  const warnings = Array.isArray(preflight.warnings) ? preflight.warnings : [];
-  const ok = !!preflight.ok;
-  els.preflightPanel.classList.remove("hidden");
-  els.preflightSummary.textContent = ok
-    ? `预检通过，警告 ${warnings.length} 条。`
-    : `预检未通过，错误 ${errors.length} 条，警告 ${warnings.length} 条。`;
-
-  if (errors.length > 0) {
-    els.preflightErrorsWrap.classList.remove("hidden");
-    setListItems(els.preflightErrors, errors);
-    els.preflightForceBtn.classList.remove("hidden");
-  } else {
-    els.preflightErrorsWrap.classList.add("hidden");
-    els.preflightForceBtn.classList.add("hidden");
-    els.preflightErrors.innerHTML = "";
-  }
-
-  if (warnings.length > 0) {
-    els.preflightWarningsWrap.classList.remove("hidden");
-    setListItems(els.preflightWarnings, warnings);
-  } else {
-    els.preflightWarningsWrap.classList.add("hidden");
-    els.preflightWarnings.innerHTML = "";
-  }
-}
-
-function activeClientExists() {
-  return !!state.activeClientId && state.clients.some((item) => item.id === state.activeClientId);
-}
-
-function updateStatusPill(status) {
-  if (status.running) {
-    const restartCount = status.restart_count ?? 0;
-    els.statusPill.textContent = `运行中 PID ${status.pid ?? "-"} | 重启 ${restartCount}`;
-    els.statusPill.classList.remove("offline");
-    els.statusPill.classList.add("online");
+  if (status.last_error) {
+    parts.push(`异常: ${status.last_error}`);
+    setStatusMeta(parts.join(" | "), "warn");
     return;
   }
-  const suffix = status.last_error ? ` | 错误: ${status.last_error}` : "";
-  els.statusPill.textContent = `未运行${suffix}`;
-  els.statusPill.classList.remove("online");
-  els.statusPill.classList.add("offline");
+  setStatusMeta(parts.join(" | "), "info");
 }
 
-function applyClientsPayload(payload) {
-  state.clients = payload.clients ?? [];
-  if (payload.active_client_id && state.clients.some((item) => item.id === payload.active_client_id)) {
-    state.activeClientId = payload.active_client_id;
-  } else if (!activeClientExists()) {
-    state.activeClientId = state.clients[0]?.id ?? null;
+function toggleLogs(expanded) {
+  if (!els.logs || !els.logsToggleLabel) return;
+  state.logsExpanded = expanded;
+  els.logs.classList.toggle("hidden", !expanded);
+  els.logsToggleLabel.textContent = expanded ? "折叠日志" : "展开日志";
+}
+
+function appendLogLine(line) {
+  if (!els.logs) return;
+  const next = line.endsWith("\n") ? line : `${line}\n`;
+  els.logs.textContent += next;
+  if (els.logs.textContent.length > 160_000) {
+    els.logs.textContent = els.logs.textContent.slice(-140_000);
   }
-  renderClientList();
+  els.logs.scrollTop = els.logs.scrollHeight;
 }
 
-function renderClientList() {
+function renderClients() {
+  if (!els.clientList) return;
   els.clientList.innerHTML = "";
   for (const client of state.clients) {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = `client-item ${client.id === state.activeClientId ? "active" : ""}`;
-    item.dataset.clientId = client.id;
-    item.innerHTML = `
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = `client-item ${client.id === state.activeClientId ? "active" : ""}`;
+    row.dataset.clientId = client.id;
+    row.innerHTML = `
       <div class="client-item-title">
         <span>${escapeHtml(client.name)}</span>
         <span class="dot ${client.running ? "online" : "offline"}"></span>
       </div>
-      <div class="client-item-meta">PID: ${client.pid ?? "-"} | 重启: ${client.restart_count ?? 0}</div>
+      <div class="client-item-meta">ID: ${escapeHtml(client.id)}</div>
     `;
-    item.addEventListener("click", () => onSelectClient(client.id));
-    els.clientList.appendChild(item);
+    els.clientList.appendChild(row);
   }
 }
 
-function fillConfig(cfg) {
-  els.clientName.value = cfg.name ?? "";
-  els.frpcPath.value = cfg.frpc_path ?? "";
-  els.runArgs.value = cfg.run_args ?? "";
-  els.configText.value = cfg.config_text ?? "";
+async function loadClients() {
+  const payload = await request("/api/clients");
+  state.clients = payload.clients || [];
+  const known = state.clients.some((item) => item.id === state.activeClientId);
+  state.activeClientId = known ? state.activeClientId : payload.active_client_id || state.clients[0]?.id || "";
+  renderClients();
 }
 
-function renderJumpLinks(items) {
-  els.jumpLinks.innerHTML = "";
-  const count = Array.isArray(items) ? items.length : 0;
-  els.jumpCount.textContent = String(count);
-  if (!items || items.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "jump-empty";
-    empty.textContent = "暂无可跳转服务。";
-    els.jumpLinks.appendChild(empty);
-    return;
-  }
-  for (const item of items) {
-    const card = document.createElement("div");
-    card.className = "jump-link-item";
-    card.innerHTML = `
-      <div class="jump-link-title">${escapeHtml(item.proxy_name)} (${escapeHtml(item.proxy_type)})</div>
-      <a class="jump-link-url" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url)}</a>
-    `;
-    els.jumpLinks.appendChild(card);
-  }
+async function loadActiveConfig() {
+  if (!state.activeClientId) return;
+  const payload = await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/config`);
+  if (!els.clientName || !els.frpcPath || !els.runArgs || !els.configText) return;
+  els.clientName.value = payload.name || "";
+  els.frpcPath.value = payload.frpc_path || "";
+  els.runArgs.value = payload.run_args || "";
+  els.configText.value = payload.config_text || "";
 }
 
-function buildPayload() {
-  return {
-    id: state.activeClientId,
-    name: els.clientName.value.trim(),
-    frpc_path: els.frpcPath.value.trim(),
-    run_args: els.runArgs.value.trim(),
-    config_text: els.configText.value,
-    env: {},
-  };
-}
-
-function appendLogLine(line) {
-  const lines = (els.logs.textContent ? `${els.logs.textContent}\n${line}` : line).split("\n");
-  els.logs.textContent = lines.slice(-600).join("\n");
+async function loadStatusAndLogs() {
+  if (!state.activeClientId) return;
+  const [status, logs] = await Promise.all([
+    request(`/api/clients/${encodeURIComponent(state.activeClientId)}/status`),
+    request(`/api/clients/${encodeURIComponent(state.activeClientId)}/logs?limit=800`),
+  ]);
+  setStatus(status);
+  if (!els.logs) return;
+  els.logs.textContent = (logs.items || []).join("\n");
   els.logs.scrollTop = els.logs.scrollHeight;
 }
 
@@ -293,305 +156,242 @@ function closeStream() {
 
 function connectStream() {
   closeStream();
-  if (!activeClientExists()) return;
+  if (!state.activeClientId) return;
   const token = ++state.streamToken;
   const source = new EventSource(`/api/clients/${encodeURIComponent(state.activeClientId)}/stream`);
   state.eventSource = source;
 
-  source.addEventListener("status", (event) => {
-    updateStatusPill(JSON.parse(event.data));
+  source.onopen = () => {
     state.reconnectDelaySec = 1;
+  };
+
+  source.addEventListener("status", (raw) => {
+    const payload = JSON.parse(raw.data || "{}");
+    setStatus(payload);
   });
-  source.addEventListener("log", (event) => {
-    const payload = JSON.parse(event.data);
-    if (payload.line) appendLogLine(payload.line);
+
+  source.addEventListener("log", (raw) => {
+    const payload = JSON.parse(raw.data || "{}");
+    if (payload.line) appendLogLine(String(payload.line));
   });
+
+  source.addEventListener("event", (raw) => {
+    const payload = JSON.parse(raw.data || "{}");
+    const type = payload.event_type || "event";
+    const message = payload.message || "";
+    appendLogLine(`[${type}] ${message}`);
+  });
+
   source.onerror = () => {
     source.close();
     if (token !== state.streamToken) return;
     const delay = state.reconnectDelaySec;
     state.reconnectDelaySec = Math.min(30, state.reconnectDelaySec * 2);
     state.reconnectTimer = setTimeout(() => {
-      if (token === state.streamToken) connectStream();
+      if (token === state.streamToken) {
+        connectStream();
+      }
     }, delay * 1000);
   };
 }
 
-async function refreshStatusLogsLinks() {
-  if (!activeClientExists()) {
-    els.logs.textContent = "";
-    renderJumpLinks([]);
-    updateStatusPill({ running: false, last_error: null });
+function hidePreflightPanel() {
+  if (!els.preflightPanel) return;
+  els.preflightPanel.classList.add("hidden");
+  if (!els.preflightForceBtn || !els.preflightErrorsWrap || !els.preflightWarningsWrap || !els.preflightErrors || !els.preflightWarnings || !els.preflightSummary) {
     return;
   }
-  const [status, logs, links] = await Promise.all([
-    api.status(state.activeClientId),
-    api.logs(state.activeClientId),
-    api.jumpLinks(state.activeClientId),
-  ]);
-  updateStatusPill(status);
-  els.logs.textContent = logs.items.join("\n");
-  renderJumpLinks(links.items);
+  els.preflightForceBtn.classList.add("hidden");
+  els.preflightErrorsWrap.classList.add("hidden");
+  els.preflightWarningsWrap.classList.add("hidden");
+  els.preflightErrors.innerHTML = "";
+  els.preflightWarnings.innerHTML = "";
+  els.preflightSummary.textContent = "";
 }
 
-async function refreshDashboard() {
-  const previousActive = state.activeClientId;
-  await loadClients();
-  if (!activeClientExists()) {
-    closeStream();
-    hidePreflightPanel();
-    setHint("暂无客户端，请先新增。", "warn");
+function showPreflightPanel(payload) {
+  if (!els.preflightPanel || !els.preflightSummary || !els.preflightErrorsWrap || !els.preflightErrors || !els.preflightWarningsWrap || !els.preflightWarnings || !els.preflightForceBtn) {
     return;
   }
-  if (previousActive !== state.activeClientId) {
-    await loadSelectedClientConfig();
-    connectStream();
-  }
-  await refreshStatusLogsLinks();
-}
+  const errors = payload.errors || [];
+  const warnings = payload.warnings || [];
+  els.preflightPanel.classList.remove("hidden");
+  els.preflightSummary.textContent = `错误 ${errors.length} 条，警告 ${warnings.length} 条`;
 
-async function loadClients() {
-  const payload = await api.listClients();
-  applyClientsPayload(payload);
-}
-
-async function loadSelectedClientConfig() {
-  if (!activeClientExists()) return;
-  const cfg = await api.getClientConfig(state.activeClientId);
-  fillConfig(cfg);
-}
-
-async function loadAuthProfile() {
-  const profile = await api.authProfile();
-  els.accountPolicy.textContent = profile.password_policy || "密码至少8位，且必须同时包含字母和数字。";
-  els.accountNewUsername.value = "";
-  els.accountCurrentPassword.value = "";
-  els.accountNewPassword.value = "";
-  els.accountConfirmPassword.value = "";
-  updatePasswordHint();
-}
-
-async function onSelectClient(clientId) {
-  try {
-    await api.selectClient(clientId);
-    await loadClients();
-    await loadSelectedClientConfig();
-    await refreshStatusLogsLinks();
-    connectStream();
-    hidePreflightPanel();
-    setHint("客户端已切换。");
-  } catch (error) {
-    setHint(`切换失败: ${error.message}`, "error");
-  }
-}
-
-async function onCreateClient() {
-  const suggested = `客户端 ${state.clients.length + 1}`;
-  const name = window.prompt("请输入新客户端名称：", suggested);
-  if (name === null) return;
-  try {
-    const payload = await api.createClient(name.trim() || suggested);
-    applyClientsPayload(payload);
-    await loadSelectedClientConfig();
-    await refreshStatusLogsLinks();
-    connectStream();
-    hidePreflightPanel();
-    setHint("客户端已新增。");
-  } catch (error) {
-    setHint(`新增失败: ${error.message}`, "error");
-  }
-}
-
-async function onDeleteClient() {
-  if (!activeClientExists()) return;
-  const active = state.clients.find((item) => item.id === state.activeClientId);
-  const confirmed = window.confirm(`确认删除客户端「${active?.name ?? state.activeClientId}」吗？`);
-  if (!confirmed) return;
-  try {
-    const payload = await api.deleteClient(state.activeClientId);
-    applyClientsPayload(payload);
-    await loadSelectedClientConfig();
-    await refreshStatusLogsLinks();
-    connectStream();
-    hidePreflightPanel();
-    setHint("客户端已删除。");
-  } catch (error) {
-    setHint(`删除失败: ${error.message}`, "error");
-  }
-}
-
-async function tryAutoPickPath(saveAfterPick = false, silent = false) {
-  if (!activeClientExists()) return false;
-  const result = await api.autoFrpcPath(state.activeClientId);
-  if (!result.selected_exists) {
-    if (!silent) setHint("未检测到可用 frpc。", "warn");
-    return false;
-  }
-  els.frpcPath.value = result.selected_path;
-  if (saveAfterPick) {
-    await api.saveClientConfig(state.activeClientId, buildPayload());
-    await loadClients();
-  }
-  if (!silent) setHint(`已自动选择: ${result.selected_path}`);
-  return true;
-}
-
-async function handleAccountSave() {
-  const newUsername = els.accountNewUsername.value.trim();
-  const currentPassword = els.accountCurrentPassword.value;
-  const newPassword = els.accountNewPassword.value;
-  const confirmPassword = els.accountConfirmPassword.value;
-
-  if (!currentPassword) {
-    setHint("请填写当前密码以确认身份。", "warn");
-    return;
-  }
-  if (!newUsername && !newPassword) {
-    setHint("请至少填写新用户名或新密码。", "warn");
-    return;
-  }
-  if (newPassword && newPassword !== confirmPassword) {
-    setHint("两次输入的新密码不一致。", "warn");
-    return;
-  }
-  if (newPassword) {
-    const strength = evaluatePasswordStrength(newPassword);
-    if (!strength.ok) {
-      setHint(strength.message, "warn");
-      return;
+  els.preflightErrors.innerHTML = "";
+  if (errors.length) {
+    els.preflightErrorsWrap.classList.remove("hidden");
+    for (const item of errors) {
+      const li = document.createElement("li");
+      li.textContent = String(item);
+      els.preflightErrors.appendChild(li);
     }
+  } else {
+    els.preflightErrorsWrap.classList.add("hidden");
   }
-  try {
-    await api.updateAuthProfile({
-      new_username: newUsername || null,
-      current_password: currentPassword,
-      new_password: newPassword || null,
-    });
-    setHint("账号设置已更新，请重新登录。", "info");
-    setTimeout(() => {
-      window.location.replace("/login");
-    }, 600);
-  } catch (error) {
-    setHint(`账号设置更新失败: ${error.message}`, "error");
+
+  els.preflightWarnings.innerHTML = "";
+  if (warnings.length) {
+    els.preflightWarningsWrap.classList.remove("hidden");
+    for (const item of warnings) {
+      const li = document.createElement("li");
+      li.textContent = String(item);
+      els.preflightWarnings.appendChild(li);
+    }
+  } else {
+    els.preflightWarningsWrap.classList.add("hidden");
+  }
+  els.preflightForceBtn.classList.toggle("hidden", errors.length === 0);
+}
+
+async function startClient(force = false) {
+  if (!state.activeClientId) return;
+  await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/start?force=${force ? "true" : "false"}`, "POST");
+  setHint(force ? "已强制启动请求。" : "已启动。", "info");
+  hidePreflightPanel();
+  await Promise.all([loadClients(), loadStatusAndLogs()]);
+}
+
+async function runPreflightAndStart() {
+  if (!state.activeClientId) return;
+  const payload = await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/preflight`, "POST");
+  if (payload.ok) {
+    await startClient(false);
+    return;
+  }
+  showPreflightPanel(payload);
+  setHint("预检未通过，请处理错误或选择强制启动。", "warn");
+}
+
+async function saveConfig() {
+  if (!state.activeClientId) return;
+  if (!els.clientName || !els.frpcPath || !els.runArgs || !els.configText) return;
+  await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/config`, "PUT", {
+    id: state.activeClientId,
+    name: els.clientName.value.trim(),
+    frpc_path: els.frpcPath.value.trim(),
+    run_args: els.runArgs.value.trim(),
+    config_text: els.configText.value,
+    env: {},
+  });
+  setHint("配置已保存。", "info");
+  await loadClients();
+}
+
+async function autoDetectFrpcPath() {
+  if (!state.activeClientId) return;
+  const payload = await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/frpc-path/auto`);
+  if (!els.frpcPath) return;
+  els.frpcPath.value = payload.selected_path || "";
+  if (payload.selected_exists) {
+    setHint(`已选择自动路径: ${payload.selected_path}`, "info");
+  } else {
+    setHint(`未检测到可用 frpc，建议手动设置路径。`, "warn");
   }
 }
 
 function bindEvents() {
-  els.addClientBtn.addEventListener("click", onCreateClient);
-  els.deleteClientBtn.addEventListener("click", onDeleteClient);
-  els.logoutBtn.addEventListener("click", () => logout());
-  els.autoPathBtn.addEventListener("click", async () => {
-    try {
-      await tryAutoPickPath(true, false);
-    } catch (error) {
-      setHint(`自动选择失败: ${error.message}`, "error");
-    }
+  els.logoutBtn?.addEventListener("click", () => logout());
+
+  els.logsToggleBtn?.addEventListener("click", () => {
+    toggleLogs(!state.logsExpanded);
   });
-  els.saveBtn.addEventListener("click", async () => {
-    if (!activeClientExists()) return;
+
+  els.clientList?.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest("button[data-client-id]");
+    if (!(button instanceof HTMLElement)) return;
+    const clientId = button.dataset.clientId || "";
+    if (!clientId || clientId === state.activeClientId) return;
     try {
-      await api.saveClientConfig(state.activeClientId, buildPayload());
-      await loadClients();
+      await request(`/api/clients/${encodeURIComponent(clientId)}/select`, "POST");
+      state.activeClientId = clientId;
       hidePreflightPanel();
-      setHint("配置已保存。");
+      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs()]);
+      connectStream();
     } catch (error) {
-      setHint(`保存失败: ${error.message}`, "error");
+      setHint(`切换客户端失败: ${error.message}`, "error");
     }
   });
-  els.startBtn.addEventListener("click", async () => {
-    if (!activeClientExists()) return;
+
+  els.addClientBtn?.addEventListener("click", async () => {
     try {
-      await api.saveClientConfig(state.activeClientId, buildPayload());
-      const preflight = await api.preflight(state.activeClientId);
-      showPreflightPanel(preflight);
-      if (!preflight.ok) {
-        setHint("预检未通过，请修复错误或使用强制启动。", "warn");
-        return;
-      }
-      const status = await api.start(state.activeClientId, false);
-      updateStatusPill(status);
-      await refreshDashboard();
-      if ((preflight.warnings || []).length > 0) {
-        setHint(`frpc 已启动（存在 ${(preflight.warnings || []).length} 条预检警告）。`, "warn");
-      } else {
-        setHint("frpc 已启动。");
-      }
+      const payload = await request("/api/clients", "POST", { name: "" });
+      state.activeClientId = payload.active_client_id || state.activeClientId;
+      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs()]);
+      connectStream();
+      setHint("已新增客户端。", "info");
     } catch (error) {
-      setHint(`启动失败: ${error.message}`, "error");
+      setHint(`新增失败: ${error.message}`, "error");
     }
   });
-  els.preflightForceBtn.addEventListener("click", async () => {
-    if (!activeClientExists()) return;
-    const confirmed = window.confirm("预检存在错误，确认忽略并强制启动吗？");
-    if (!confirmed) return;
+
+  els.deleteClientBtn?.addEventListener("click", async () => {
+    if (!state.activeClientId) return;
+    const current = state.clients.find((item) => item.id === state.activeClientId);
+    const ok = window.confirm(`确认删除客户端「${current?.name || state.activeClientId}」吗？`);
+    if (!ok) return;
     try {
-      const status = await api.start(state.activeClientId, true);
-      updateStatusPill(status);
-      await refreshDashboard();
-      setHint("已执行强制启动。", "warn");
+      const payload = await request(`/api/clients/${encodeURIComponent(state.activeClientId)}`, "DELETE");
+      state.activeClientId = payload.active_client_id || payload.clients?.[0]?.id || "";
+      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs()]);
+      connectStream();
+      setHint("客户端已删除。", "info");
     } catch (error) {
-      setHint(`强制启动失败: ${error.message}`, "error");
+      setHint(`删除失败: ${error.message}`, "error");
     }
   });
-  els.preflightCloseBtn.addEventListener("click", () => {
-    hidePreflightPanel();
+
+  els.autoPathBtn?.addEventListener("click", () => {
+    autoDetectFrpcPath().catch((error) => setHint(`自动路径失败: ${error.message}`, "error"));
   });
-  els.stopBtn.addEventListener("click", async () => {
-    if (!activeClientExists()) return;
+  els.saveBtn?.addEventListener("click", () => {
+    saveConfig().catch((error) => setHint(`保存失败: ${error.message}`, "error"));
+  });
+  els.startBtn?.addEventListener("click", () => {
+    runPreflightAndStart().catch((error) => setHint(`启动失败: ${error.message}`, "error"));
+  });
+  els.stopBtn?.addEventListener("click", async () => {
+    if (!state.activeClientId) return;
     try {
-      const status = await api.stop(state.activeClientId);
-      updateStatusPill(status);
-      await refreshDashboard();
-      setHint("frpc 已停止。");
+      await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/stop`, "POST");
+      setHint("已停止。", "info");
+      await Promise.all([loadClients(), loadStatusAndLogs()]);
     } catch (error) {
       setHint(`停止失败: ${error.message}`, "error");
     }
   });
-  els.refreshBtn.addEventListener("click", async () => {
+  els.refreshBtn?.addEventListener("click", async () => {
     try {
-      await refreshDashboard();
-      setHint("状态已刷新。");
+      await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs()]);
+      setHint("已刷新。", "info");
     } catch (error) {
       setHint(`刷新失败: ${error.message}`, "error");
     }
   });
-  els.accountSaveBtn.addEventListener("click", handleAccountSave);
-  els.accountNewPassword.addEventListener("input", updatePasswordHint);
-  els.uiChangesBtn?.addEventListener("click", () => {
-    showUiNoticeModal();
-  });
-  els.uiNoticeCloseBtn?.addEventListener("click", () => {
-    hideUiNoticeModal(true);
-  });
-  els.uiNoticeModal?.addEventListener("click", (event) => {
-    if (event.target === els.uiNoticeModal) hideUiNoticeModal(true);
+
+  els.preflightCloseBtn?.addEventListener("click", hidePreflightPanel);
+  els.preflightForceBtn?.addEventListener("click", () => {
+    startClient(true).catch((error) => setHint(`强制启动失败: ${error.message}`, "error"));
   });
 }
 
 async function init() {
   markActiveNav("dashboard");
   initThemePicker(els.themeMode);
-  bindEvents();
+  toggleLogs(false);
+  hidePreflightPanel();
   const auth = await requireAuth();
   setUserBadge(els.userBadge, auth.username);
-  await Promise.all([loadClients(), loadAuthProfile()]);
-  if (!activeClientExists()) {
+  bindEvents();
+  await Promise.all([loadClients()]);
+  if (!state.activeClientId) {
     setHint("暂无客户端，请先新增。", "warn");
     return;
   }
-  await loadSelectedClientConfig();
-  if (!els.frpcPath.value.trim() || els.frpcPath.value.trim() === "bin/frpc.exe") {
-    await tryAutoPickPath(true, true);
-  }
-  await refreshStatusLogsLinks();
+  await Promise.all([loadActiveConfig(), loadStatusAndLogs()]);
   connectStream();
-  hidePreflightPanel();
-  try {
-    const dismissed = window.localStorage.getItem(UI_NOTICE_KEY);
-    if (!dismissed) showUiNoticeModal();
-  } catch (_error) {
-    showUiNoticeModal();
-  }
 }
 
 window.addEventListener("beforeunload", closeStream);

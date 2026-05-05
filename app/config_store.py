@@ -229,62 +229,6 @@ class ConfigStore:
                 max(100_000, int(iterations)),
             )
 
-    async def is_read_only(self) -> bool:
-        async with self._lock:
-            return await asyncio.to_thread(self._is_read_only_sync)
-
-    async def set_read_only(self, enabled: bool) -> dict[str, Any]:
-        async with self._lock:
-            return await asyncio.to_thread(self._set_read_only_sync, enabled)
-
-    async def get_maintenance_state(self) -> dict[str, Any]:
-        async with self._lock:
-            return await asyncio.to_thread(self._get_maintenance_state_sync)
-
-    async def list_templates(self) -> list[dict[str, Any]]:
-        async with self._lock:
-            return await asyncio.to_thread(self._list_templates_sync)
-
-    async def create_template(
-        self,
-        name: str,
-        tags: list[str],
-        content: str,
-        variables: list[str],
-        source_client_id: str | None,
-    ) -> dict[str, Any]:
-        async with self._lock:
-            return await asyncio.to_thread(
-                self._create_template_sync,
-                name,
-                tags,
-                content,
-                variables,
-                source_client_id,
-            )
-
-    async def update_template(
-        self,
-        template_id: int,
-        name: str,
-        tags: list[str],
-        content: str,
-        variables: list[str],
-    ) -> dict[str, Any] | None:
-        async with self._lock:
-            return await asyncio.to_thread(
-                self._update_template_sync,
-                template_id,
-                name,
-                tags,
-                content,
-                variables,
-            )
-
-    async def delete_template(self, template_id: int) -> bool:
-        async with self._lock:
-            return await asyncio.to_thread(self._delete_template_sync, template_id)
-
     async def dump_bundle(self) -> dict[str, Any]:
         async with self._lock:
             return await asyncio.to_thread(self._dump_bundle_sync)
@@ -292,33 +236,6 @@ class ConfigStore:
     async def apply_bundle(self, bundle: dict[str, Any], mode: str) -> None:
         async with self._lock:
             await asyncio.to_thread(self._apply_bundle_sync, bundle, mode)
-
-    async def create_snapshot(self, reason: str) -> dict[str, Any]:
-        async with self._lock:
-            return await asyncio.to_thread(self._create_snapshot_sync, reason)
-
-    async def list_snapshots(self, limit: int = 20) -> list[dict[str, Any]]:
-        safe_limit = max(1, min(limit, 200))
-        async with self._lock:
-            return await asyncio.to_thread(self._list_snapshots_sync, safe_limit)
-
-    async def rollback_snapshot(self, snapshot_id: int) -> bool:
-        async with self._lock:
-            return await asyncio.to_thread(self._rollback_snapshot_sync, snapshot_id)
-
-    async def list_audit_logs(self, limit: int = 500) -> list[dict[str, Any]]:
-        safe_limit = max(1, min(limit, 2000))
-        async with self._lock:
-            return await asyncio.to_thread(self._list_audit_logs_sync, safe_limit)
-
-    async def add_audit_log(
-        self,
-        action: str,
-        target: str,
-        detail: dict[str, Any] | None = None,
-    ) -> None:
-        async with self._lock:
-            await asyncio.to_thread(self._add_audit_log_sync, action, target, detail or {})
 
     def frpc_config_file(self, client_id: str) -> Path:
         safe = self._safe_filename(client_id)
@@ -330,7 +247,6 @@ class ConfigStore:
             self._create_tables(conn)
             self._migrate_legacy_clients_if_needed(conn)
             self._ensure_alert_rule_defaults(conn)
-            self._ensure_maintenance_defaults(conn)
             self._ensure_default_client(conn)
             self._sync_config_files_from_db(conn)
         finally:
@@ -1106,231 +1022,12 @@ class ConfigStore:
                     threshold INTEGER NOT NULL DEFAULT 0
                 );
 
-                CREATE TABLE IF NOT EXISTS config_snapshots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    reason TEXT NOT NULL,
-                    payload_json TEXT NOT NULL,
-                    created_at REAL NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS config_templates (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    tags_json TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    variables_json TEXT NOT NULL,
-                    source_client_id TEXT,
-                    version INTEGER NOT NULL DEFAULT 1,
-                    last_used_at REAL,
-                    created_at REAL NOT NULL,
-                    updated_at REAL NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS audit_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    action TEXT NOT NULL,
-                    target TEXT NOT NULL,
-                    detail_json TEXT NOT NULL,
-                    created_at REAL NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS maintenance_state (
-                    state_key TEXT PRIMARY KEY,
-                    state_value TEXT NOT NULL,
-                    updated_at REAL NOT NULL
-                );
+                DROP TABLE IF EXISTS config_snapshots;
+                DROP TABLE IF EXISTS config_templates;
+                DROP TABLE IF EXISTS audit_logs;
+                DROP TABLE IF EXISTS maintenance_state;
                 """
             )
-
-    def _ensure_maintenance_defaults(self, conn: sqlite3.Connection) -> None:
-        now = time.time()
-        defaults = [
-            ("read_only", "0"),
-            ("snapshot_max_keep", "20"),
-        ]
-        with conn:
-            for key, value in defaults:
-                conn.execute(
-                    """
-                    INSERT INTO maintenance_state (state_key, state_value, updated_at)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(state_key) DO NOTHING
-                    """,
-                    (key, value, now),
-                )
-
-    def _is_read_only_sync(self) -> bool:
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT state_value FROM maintenance_state WHERE state_key = ?",
-                ("read_only",),
-            ).fetchone()
-            return bool(row and str(row["state_value"]) == "1")
-        finally:
-            conn.close()
-
-    def _set_read_only_sync(self, enabled: bool) -> dict[str, Any]:
-        conn = self._connect()
-        now = time.time()
-        try:
-            with conn:
-                conn.execute(
-                    """
-                    INSERT INTO maintenance_state (state_key, state_value, updated_at)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(state_key) DO UPDATE SET state_value = excluded.state_value, updated_at = excluded.updated_at
-                    """,
-                    ("read_only", "1" if enabled else "0", now),
-                )
-            return self._get_maintenance_state_sync_with_conn(conn)
-        finally:
-            conn.close()
-
-    def _get_maintenance_state_sync(self) -> dict[str, Any]:
-        conn = self._connect()
-        try:
-            return self._get_maintenance_state_sync_with_conn(conn)
-        finally:
-            conn.close()
-
-    def _get_maintenance_state_sync_with_conn(self, conn: sqlite3.Connection) -> dict[str, Any]:
-        rows = conn.execute(
-            "SELECT state_key, state_value, updated_at FROM maintenance_state"
-        ).fetchall()
-        mapping = {str(row["state_key"]): str(row["state_value"]) for row in rows}
-        return {
-            "read_only": mapping.get("read_only", "0") == "1",
-            "snapshot_max_keep": int(mapping.get("snapshot_max_keep", "20")),
-        }
-
-    def _list_templates_sync(self) -> list[dict[str, Any]]:
-        conn = self._connect()
-        try:
-            rows = conn.execute(
-                """
-                SELECT id, name, tags_json, content, variables_json, source_client_id, version, last_used_at, created_at, updated_at
-                FROM config_templates
-                ORDER BY updated_at DESC, id DESC
-                """
-            ).fetchall()
-            items: list[dict[str, Any]] = []
-            for row in rows:
-                items.append(
-                    {
-                        "id": int(row["id"]),
-                        "name": str(row["name"]),
-                        "tags": self._safe_json_list(row["tags_json"]),
-                        "content": str(row["content"]),
-                        "variables": self._safe_json_list(row["variables_json"]),
-                        "source_client_id": str(row["source_client_id"]) if row["source_client_id"] else None,
-                        "version": int(row["version"]),
-                        "last_used_at": float(row["last_used_at"]) if row["last_used_at"] is not None else None,
-                        "created_at": float(row["created_at"]),
-                        "updated_at": float(row["updated_at"]),
-                    }
-                )
-            return items
-        finally:
-            conn.close()
-
-    def _create_template_sync(
-        self,
-        name: str,
-        tags: list[str],
-        content: str,
-        variables: list[str],
-        source_client_id: str | None,
-    ) -> dict[str, Any]:
-        conn = self._connect()
-        now = time.time()
-        try:
-            with conn:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO config_templates (name, tags_json, content, variables_json, source_client_id, version, last_used_at, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 1, NULL, ?, ?)
-                    """,
-                    (
-                        name,
-                        json.dumps(tags, ensure_ascii=False),
-                        content,
-                        json.dumps(variables, ensure_ascii=False),
-                        source_client_id,
-                        now,
-                        now,
-                    ),
-                )
-            template_id = int(cursor.lastrowid)
-            return self._get_template_by_id_sync(conn, template_id)
-        finally:
-            conn.close()
-
-    def _update_template_sync(
-        self,
-        template_id: int,
-        name: str,
-        tags: list[str],
-        content: str,
-        variables: list[str],
-    ) -> dict[str, Any] | None:
-        conn = self._connect()
-        now = time.time()
-        try:
-            with conn:
-                cursor = conn.execute(
-                    """
-                    UPDATE config_templates
-                    SET name = ?, tags_json = ?, content = ?, variables_json = ?, version = version + 1, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        name,
-                        json.dumps(tags, ensure_ascii=False),
-                        content,
-                        json.dumps(variables, ensure_ascii=False),
-                        now,
-                        template_id,
-                    ),
-                )
-            if cursor.rowcount == 0:
-                return None
-            return self._get_template_by_id_sync(conn, template_id)
-        finally:
-            conn.close()
-
-    def _delete_template_sync(self, template_id: int) -> bool:
-        conn = self._connect()
-        try:
-            with conn:
-                cursor = conn.execute("DELETE FROM config_templates WHERE id = ?", (template_id,))
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
-
-    def _get_template_by_id_sync(self, conn: sqlite3.Connection, template_id: int) -> dict[str, Any]:
-        row = conn.execute(
-            """
-            SELECT id, name, tags_json, content, variables_json, source_client_id, version, last_used_at, created_at, updated_at
-            FROM config_templates
-            WHERE id = ?
-            """,
-            (template_id,),
-        ).fetchone()
-        if row is None:
-            raise KeyError(f"template not found: {template_id}")
-        return {
-            "id": int(row["id"]),
-            "name": str(row["name"]),
-            "tags": self._safe_json_list(row["tags_json"]),
-            "content": str(row["content"]),
-            "variables": self._safe_json_list(row["variables_json"]),
-            "source_client_id": str(row["source_client_id"]) if row["source_client_id"] else None,
-            "version": int(row["version"]),
-            "last_used_at": float(row["last_used_at"]) if row["last_used_at"] is not None else None,
-            "created_at": float(row["created_at"]),
-            "updated_at": float(row["updated_at"]),
-        }
 
     def _dump_bundle_sync(self) -> dict[str, Any]:
         conn = self._connect()
@@ -1350,16 +1047,12 @@ class ConfigStore:
                 )
             channels = self._list_alert_channels_sync_with_conn(conn)
             rules = self._get_alert_rules_sync_with_conn(conn)
-            templates = self._list_templates_sync_with_conn(conn)
-            maintenance = self._get_maintenance_state_sync_with_conn(conn)
             return {
                 "schema_version": 1,
                 "active_client_id": state.active_client_id,
                 "clients": clients,
                 "alert_channels": channels,
                 "alert_rules": rules,
-                "templates": templates,
-                "maintenance_state": maintenance,
                 "exported_at": time.time(),
             }
         finally:
@@ -1395,7 +1088,6 @@ class ConfigStore:
                     conn.execute("DELETE FROM clients")
                     conn.execute("DELETE FROM client_env")
                     conn.execute("DELETE FROM alert_channels")
-                    conn.execute("DELETE FROM config_templates")
                 for client in state.clients:
                     if mode == "merge":
                         exists = conn.execute(
@@ -1462,182 +1154,9 @@ class ConfigStore:
                             max(1, int(rules.get("restart_threshold", 3))),
                         ),
                     )
-
-                for item in list(bundle.get("templates") or []):
-                    if not isinstance(item, dict):
-                        continue
-                    conn.execute(
-                        """
-                        INSERT INTO config_templates (name, tags_json, content, variables_json, source_client_id, version, last_used_at, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            str(item.get("name", "")),
-                            json.dumps(self._safe_str_list(item.get("tags")), ensure_ascii=False),
-                            str(item.get("content", "")),
-                            json.dumps(self._safe_str_list(item.get("variables")), ensure_ascii=False),
-                            str(item.get("source_client_id")) if item.get("source_client_id") else None,
-                            int(item.get("version", 1)),
-                            float(item["last_used_at"]) if item.get("last_used_at") is not None else None,
-                            now,
-                            now,
-                        ),
-                    )
-
-                maintenance = bundle.get("maintenance_state")
-                if isinstance(maintenance, dict):
-                    conn.execute(
-                        """
-                        INSERT INTO maintenance_state (state_key, state_value, updated_at)
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(state_key) DO UPDATE SET state_value = excluded.state_value, updated_at = excluded.updated_at
-                        """,
-                        ("read_only", "1" if bool(maintenance.get("read_only", False)) else "0", now),
-                    )
-                    conn.execute(
-                        """
-                        INSERT INTO maintenance_state (state_key, state_value, updated_at)
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(state_key) DO UPDATE SET state_value = excluded.state_value, updated_at = excluded.updated_at
-                        """,
-                        ("snapshot_max_keep", str(max(1, int(maintenance.get("snapshot_max_keep", 20)))), now),
-                    )
             self._sync_config_files_from_db(conn)
         finally:
             conn.close()
-
-    def _create_snapshot_sync(self, reason: str) -> dict[str, Any]:
-        conn = self._connect()
-        now = time.time()
-        try:
-            payload = self._dump_bundle_sync()
-            with conn:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO config_snapshots (reason, payload_json, created_at)
-                    VALUES (?, ?, ?)
-                    """,
-                    (reason, json.dumps(payload, ensure_ascii=False), now),
-                )
-                snapshot_id = int(cursor.lastrowid)
-            self._prune_snapshots_sync(conn)
-            return {"id": snapshot_id, "reason": reason, "created_at": now}
-        finally:
-            conn.close()
-
-    def _list_snapshots_sync(self, limit: int) -> list[dict[str, Any]]:
-        conn = self._connect()
-        try:
-            rows = conn.execute(
-                """
-                SELECT id, reason, created_at
-                FROM config_snapshots
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-            return [
-                {"id": int(row["id"]), "reason": str(row["reason"]), "created_at": float(row["created_at"])}
-                for row in rows
-            ]
-        finally:
-            conn.close()
-
-    def _rollback_snapshot_sync(self, snapshot_id: int) -> bool:
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT payload_json FROM config_snapshots WHERE id = ?",
-                (snapshot_id,),
-            ).fetchone()
-            if row is None:
-                return False
-            payload = json.loads(str(row["payload_json"]))
-            self._apply_bundle_sync(payload, "overwrite")
-            return True
-        finally:
-            conn.close()
-
-    def _list_audit_logs_sync(self, limit: int) -> list[dict[str, Any]]:
-        conn = self._connect()
-        try:
-            rows = conn.execute(
-                """
-                SELECT id, action, target, detail_json, created_at
-                FROM audit_logs
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
-            items: list[dict[str, Any]] = []
-            for row in rows:
-                try:
-                    detail = json.loads(str(row["detail_json"]))
-                except json.JSONDecodeError:
-                    detail = {}
-                items.append(
-                    {
-                        "id": int(row["id"]),
-                        "action": str(row["action"]),
-                        "target": str(row["target"]),
-                        "detail": detail,
-                        "created_at": float(row["created_at"]),
-                    }
-                )
-            return items
-        finally:
-            conn.close()
-
-    def _add_audit_log_sync(self, action: str, target: str, detail: dict[str, Any]) -> None:
-        conn = self._connect()
-        try:
-            with conn:
-                conn.execute(
-                    """
-                    INSERT INTO audit_logs (action, target, detail_json, created_at)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (
-                        action,
-                        target,
-                        json.dumps(detail, ensure_ascii=False),
-                        time.time(),
-                    ),
-                )
-        finally:
-            conn.close()
-
-    def _prune_snapshots_sync(self, conn: sqlite3.Connection) -> None:
-        max_keep = self._get_maintenance_state_sync_with_conn(conn)["snapshot_max_keep"]
-        rows = conn.execute(
-            """
-            SELECT id FROM config_snapshots ORDER BY id DESC
-            """
-        ).fetchall()
-        if len(rows) <= max_keep:
-            return
-        stale_ids = [int(row["id"]) for row in rows[max_keep:]]
-        with conn:
-            conn.executemany("DELETE FROM config_snapshots WHERE id = ?", [(sid,) for sid in stale_ids])
-
-    def _safe_json_list(self, raw: Any) -> list[str]:
-        if raw is None:
-            return []
-        if isinstance(raw, str):
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                return []
-        else:
-            parsed = raw
-        return self._safe_str_list(parsed)
-
-    def _safe_str_list(self, raw: Any) -> list[str]:
-        if not isinstance(raw, list):
-            return []
-        return [str(item).strip() for item in raw if str(item).strip()]
 
     def _list_alert_channels_sync_with_conn(self, conn: sqlite3.Connection) -> list[dict[str, Any]]:
         rows = conn.execute(
@@ -1677,29 +1196,3 @@ class ConfigStore:
             "on_restart_threshold": mapped.get("restart_threshold", {}).get("enabled", True),
             "restart_threshold": mapped.get("restart_threshold", {}).get("threshold", 3),
         }
-
-    def _list_templates_sync_with_conn(self, conn: sqlite3.Connection) -> list[dict[str, Any]]:
-        rows = conn.execute(
-            """
-            SELECT id, name, tags_json, content, variables_json, source_client_id, version, last_used_at, created_at, updated_at
-            FROM config_templates
-            ORDER BY updated_at DESC, id DESC
-            """
-        ).fetchall()
-        items: list[dict[str, Any]] = []
-        for row in rows:
-            items.append(
-                {
-                    "id": int(row["id"]),
-                    "name": str(row["name"]),
-                    "tags": self._safe_json_list(row["tags_json"]),
-                    "content": str(row["content"]),
-                    "variables": self._safe_json_list(row["variables_json"]),
-                    "source_client_id": str(row["source_client_id"]) if row["source_client_id"] else None,
-                    "version": int(row["version"]),
-                    "last_used_at": float(row["last_used_at"]) if row["last_used_at"] is not None else None,
-                    "created_at": float(row["created_at"]),
-                    "updated_at": float(row["updated_at"]),
-                }
-            )
-        return items

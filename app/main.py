@@ -27,7 +27,6 @@ from .config_store import (
 from .frpc_manager import FrpcManager
 from .maintenance import (
     build_export_zip,
-    extract_template_variables,
     parse_import_zip,
     preflight_config,
     preview_import_bundle,
@@ -38,8 +37,6 @@ from .schemas import (
     AlertChannelPayload,
     AlertChannelResponse,
     AlertChannelsResponse,
-    AuditLogItem,
-    AuditLogsResponse,
     AlertRulesPayload,
     AlertRulesResponse,
     AppConfigPayload,
@@ -57,18 +54,10 @@ from .schemas import (
     LoginPayload,
     LoginResponse,
     LogsResponse,
-    MaintenanceReadOnlyPayload,
-    MaintenanceStateResponse,
     PreflightResponse,
     RuntimeEventItem,
     RuntimeEventsResponse,
-    SnapshotRollbackPayload,
-    SnapshotItem,
-    SnapshotsResponse,
     StatusResponse,
-    TemplatePayload,
-    TemplateResponse,
-    TemplatesResponse,
     UpdateAuthProfilePayload,
 )
 
@@ -138,16 +127,17 @@ async def _authenticated_username(request: Request) -> str | None:
 
 
 async def _ensure_writable_mode() -> None:
-    if await config_store.is_read_only():
-        raise HTTPException(status_code=423, detail="当前处于只读维护模式，禁止写操作。")
+    return
 
 
 async def _audit(action: str, target: str, detail: dict[str, object] | None = None) -> None:
-    await config_store.add_audit_log(action=action, target=target, detail=detail or {})
+    _ = (action, target, detail)
+    return
 
 
 async def _snapshot(reason: str) -> None:
-    await config_store.create_snapshot(reason)
+    _ = reason
+    return
 
 
 def _check_data_volume_health() -> tuple[bool, str]:
@@ -436,18 +426,23 @@ async def home() -> FileResponse:
 
 
 @app.get("/events")
-async def events_page() -> FileResponse:
-    return FileResponse(WEB_DIR / "events.html")
+async def events_page() -> RedirectResponse:
+    return RedirectResponse(url="/settings", status_code=302)
 
 
 @app.get("/alerts")
-async def alerts_page() -> FileResponse:
-    return FileResponse(WEB_DIR / "alerts.html")
+async def alerts_page() -> RedirectResponse:
+    return RedirectResponse(url="/settings", status_code=302)
 
 
 @app.get("/maintenance")
-async def maintenance_page() -> FileResponse:
-    return FileResponse(WEB_DIR / "maintenance.html")
+async def maintenance_page() -> RedirectResponse:
+    return RedirectResponse(url="/settings", status_code=302)
+
+
+@app.get("/settings")
+async def settings_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "settings.html")
 
 
 @app.get("/login")
@@ -884,63 +879,6 @@ async def update_alert_rules(payload: AlertRulesPayload) -> AlertRulesResponse:
     return AlertRulesResponse(**row)
 
 
-@app.get("/api/templates", response_model=TemplatesResponse)
-async def list_templates() -> TemplatesResponse:
-    items = await config_store.list_templates()
-    return TemplatesResponse(items=[TemplateResponse(**item) for item in items])
-
-
-@app.post("/api/templates", response_model=TemplateResponse)
-async def create_template(payload: TemplatePayload) -> TemplateResponse:
-    await _ensure_writable_mode()
-    variables = extract_template_variables(payload.content)
-    row = await config_store.create_template(
-        name=payload.name.strip(),
-        tags=[item.strip() for item in payload.tags if item.strip()],
-        content=payload.content,
-        variables=variables,
-        source_client_id=payload.source_client_id,
-    )
-    await _snapshot("create_template")
-    await _audit("create_template", str(row["id"]), {"name": payload.name})
-    return TemplateResponse(**row)
-
-
-@app.put("/api/templates/{template_id}", response_model=TemplateResponse)
-async def update_template(template_id: int, payload: TemplatePayload) -> TemplateResponse:
-    await _ensure_writable_mode()
-    variables = extract_template_variables(payload.content)
-    row = await config_store.update_template(
-        template_id=template_id,
-        name=payload.name.strip(),
-        tags=[item.strip() for item in payload.tags if item.strip()],
-        content=payload.content,
-        variables=variables,
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")
-    await _snapshot("update_template")
-    await _audit("update_template", str(template_id))
-    return TemplateResponse(**row)
-
-
-@app.delete("/api/templates/{template_id}")
-async def delete_template(template_id: int) -> dict[str, bool]:
-    await _ensure_writable_mode()
-    deleted = await config_store.delete_template(template_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail=f"Template not found: {template_id}")
-    await _snapshot("delete_template")
-    await _audit("delete_template", str(template_id))
-    return {"success": True}
-
-
-@app.get("/api/audit/logs", response_model=AuditLogsResponse)
-async def audit_logs(limit: int = Query(default=500, ge=1, le=2000)) -> AuditLogsResponse:
-    rows = await config_store.list_audit_logs(limit=limit)
-    return AuditLogsResponse(items=[AuditLogItem(**row) for row in rows])
-
-
 @app.post("/api/maintenance/export")
 async def maintenance_export() -> Response:
     bundle = await config_store.dump_bundle()
@@ -1010,36 +948,6 @@ async def maintenance_import_apply(
     return {"success": True}
 
 
-@app.get("/api/maintenance/snapshots", response_model=SnapshotsResponse)
-async def maintenance_snapshots(limit: int = Query(default=20, ge=1, le=200)) -> SnapshotsResponse:
-    rows = await config_store.list_snapshots(limit=limit)
-    return SnapshotsResponse(items=[SnapshotItem(**row) for row in rows])
-
-
-@app.post("/api/maintenance/snapshots/rollback")
-async def maintenance_snapshot_rollback(payload: SnapshotRollbackPayload) -> dict[str, bool]:
-    await _ensure_writable_mode()
-    ok = await config_store.rollback_snapshot(payload.snapshot_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail=f"Snapshot not found: {payload.snapshot_id}")
-    await _snapshot("snapshot_rollback")
-    await _audit("snapshot_rollback", str(payload.snapshot_id))
-    return {"success": True}
-
-
-@app.put("/api/maintenance/read-only", response_model=MaintenanceStateResponse)
-async def maintenance_read_only(payload: MaintenanceReadOnlyPayload) -> MaintenanceStateResponse:
-    state = await config_store.set_read_only(payload.enabled)
-    await _audit("set_read_only", "maintenance", {"enabled": payload.enabled})
-    return MaintenanceStateResponse(**state)
-
-
-@app.get("/api/maintenance/state", response_model=MaintenanceStateResponse)
-async def maintenance_state() -> MaintenanceStateResponse:
-    state = await config_store.get_maintenance_state()
-    return MaintenanceStateResponse(**state)
-
-
 @app.get("/api/maintenance/diagnostics")
 async def maintenance_diagnostics() -> Response:
     try:
@@ -1056,8 +964,6 @@ async def maintenance_diagnostics() -> Response:
                 "schema_version": 1,
                 "clients": bundle.get("clients", []),
                 "alert_rules": bundle.get("alert_rules", {}),
-                "templates": bundle.get("templates", []),
-                "maintenance_state": bundle.get("maintenance_state", {}),
                 "diagnostics": report,
             }
         )

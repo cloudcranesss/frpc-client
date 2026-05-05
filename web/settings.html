@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>设置 - FRP 面板</title>
+    <link rel="stylesheet" href="/web/style.css" />
+  </head>
+  <body data-page="settings">
+    <header class="site-header">
+      <div class="brand">
+        <h1>FRP 面板</h1>
+        <p>账号、告警与备份恢复</p>
+      </div>
+      <nav class="nav-tabs" aria-label="主导航">
+        <a href="/" data-nav="dashboard">控制台</a>
+        <a href="/settings" data-nav="settings">设置</a>
+      </nav>
+      <div class="head-actions">
+        <select id="theme_mode" class="theme-select" aria-label="主题模式">
+          <option value="system">跟随系统</option>
+          <option value="light">浅色主题</option>
+          <option value="dark">深色主题</option>
+        </select>
+        <span id="user_badge" class="user-badge">未登录</span>
+        <button id="logout_btn" class="btn danger small">
+          <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-logout"></use></svg>
+          <span class="btn-label">退出登录</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="single-page">
+      <section class="panel reveal">
+        <h2>账号设置</h2>
+        <div class="field">
+          <label for="profile_username">新用户名（可选）</label>
+          <input id="profile_username" maxlength="32" placeholder="3-32 位，字母/数字/_/-" />
+        </div>
+        <div class="field">
+          <label for="profile_current_password">当前密码（必填）</label>
+          <input id="profile_current_password" type="password" autocomplete="current-password" />
+        </div>
+        <div class="field">
+          <label for="profile_new_password">新密码（可选）</label>
+          <input id="profile_new_password" type="password" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label for="profile_new_password_confirm">确认新密码</label>
+          <input id="profile_new_password_confirm" type="password" autocomplete="new-password" />
+        </div>
+        <p id="password_policy" class="hint info"></p>
+        <div class="actions two">
+          <button id="profile_save_btn" class="btn primary">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-save"></use></svg>
+            <span class="btn-label">保存账号设置</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel reveal">
+        <div class="panel-head">
+          <h2>告警渠道（Webhook）</h2>
+          <button id="alert_reload_btn" class="btn secondary small">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
+            <span class="btn-label">刷新渠道</span>
+          </button>
+        </div>
+        <div class="field">
+          <label for="alert_name">渠道名称</label>
+          <input id="alert_name" placeholder="例如: 飞书告警" />
+        </div>
+        <div class="field">
+          <label for="alert_webhook_url">Webhook 地址</label>
+          <input id="alert_webhook_url" placeholder="https://example.com/webhook" />
+        </div>
+        <div class="field two-cols">
+          <div>
+            <label for="alert_timeout_sec">超时秒数</label>
+            <input id="alert_timeout_sec" type="number" min="1" max="60" value="5" />
+          </div>
+          <div class="checkbox-field">
+            <input id="alert_enabled" type="checkbox" checked />
+            <label for="alert_enabled">启用渠道</label>
+          </div>
+        </div>
+        <div class="actions two">
+          <button id="alert_create_btn" class="btn secondary">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-plus"></use></svg>
+            <span class="btn-label">新增渠道</span>
+          </button>
+        </div>
+        <div id="alert_channels" class="alert-channels"></div>
+      </section>
+
+      <section class="panel reveal">
+        <h2>告警规则</h2>
+        <div class="field checkbox-field">
+          <input id="rule_start_failure" type="checkbox" checked />
+          <label for="rule_start_failure">启动失败触发</label>
+        </div>
+        <div class="field checkbox-field">
+          <input id="rule_abnormal_exit" type="checkbox" checked />
+          <label for="rule_abnormal_exit">异常退出触发</label>
+        </div>
+        <div class="field checkbox-field">
+          <input id="rule_restart_threshold" type="checkbox" checked />
+          <label for="rule_restart_threshold">连续重启阈值触发</label>
+        </div>
+        <div class="field">
+          <label for="rule_restart_threshold_value">连续重启阈值</label>
+          <input id="rule_restart_threshold_value" type="number" min="1" max="100" value="3" />
+        </div>
+        <div class="actions two">
+          <button id="rules_save_btn" class="btn secondary">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-save"></use></svg>
+            <span class="btn-label">保存规则</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel reveal">
+        <h2>备份恢复</h2>
+        <div class="actions two">
+          <button id="export_btn" class="btn primary">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-export"></use></svg>
+            <span class="btn-label">导出配置包</span>
+          </button>
+          <button id="diagnostics_btn" class="btn">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-download"></use></svg>
+            <span class="btn-label">下载诊断包</span>
+          </button>
+        </div>
+        <div class="field">
+          <label for="import_file">导入文件（zip）</label>
+          <input id="import_file" type="file" accept=".zip" />
+        </div>
+        <div class="actions">
+          <button id="preview_btn" class="btn secondary">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
+            <span class="btn-label">导入预检</span>
+          </button>
+          <button id="apply_overwrite_btn" class="btn danger">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-upload"></use></svg>
+            <span class="btn-label">覆盖导入</span>
+          </button>
+          <button id="apply_merge_btn" class="btn">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-merge"></use></svg>
+            <span class="btn-label">合并导入</span>
+          </button>
+        </div>
+        <pre id="preview_output" class="logs" style="min-height: 120px"></pre>
+      </section>
+
+      <section class="panel reveal">
+        <h2>浏览器缓存</h2>
+        <p class="hint info">用于排查前端显示异常。将清理本地缓存并刷新当前页面。</p>
+        <div class="actions two">
+          <button id="clear_browser_cache_btn" class="btn danger">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-broom"></use></svg>
+            <span class="btn-label">清除浏览器缓存并刷新</span>
+          </button>
+        </div>
+      </section>
+      <p id="settings_hint" class="hint info"></p>
+    </main>
+
+    <script src="/web/shared.js" type="module"></script>
+    <script src="/web/settings.js" type="module"></script>
+  </body>
+</html>
