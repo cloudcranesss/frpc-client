@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import contextlib
+import functools
 import os
 import re
 import shlex
@@ -423,9 +424,10 @@ class FrpcManager:
                 timeout=self._EVENT_CALLBACK_TIMEOUT_SEC,
             )
 
-    async def _run_io(self, func: Callable[..., Any], *args: Any) -> Any:
+    async def _run_io(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._frpc_io_pool, func, *args)
+        bound = functools.partial(func, *args, **kwargs)
+        return await loop.run_in_executor(self._frpc_io_pool, bound)
 
     async def _publish_status(self, client_id: str, state: RuntimeState) -> None:
         await self._publish(client_id, state, "status", self.status(client_id))
