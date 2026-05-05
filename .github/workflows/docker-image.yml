@@ -50,9 +50,12 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          pull: true
           push: true
           platforms: linux/amd64,linux/arm64
           build-args: |
             FRP_VERSION=${{ env.FRP_VERSION }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

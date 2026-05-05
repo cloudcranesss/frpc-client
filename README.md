@@ -108,6 +108,7 @@ python run.py
 
 - `network_mode: host`
 - `FRP_PANEL_PORT=8000`
+- `FRP_VERSION=0.68.0`（可通过 compose build args 覆盖）
 - 启动命令 `--port $${FRP_PANEL_PORT:-8000}`
 
 启动：

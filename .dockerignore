@@ -3,6 +3,7 @@
 .idea
 .vscode
 .venv
+.pytest_cache
 __pycache__
 **/__pycache__
 *.pyc
@@ -10,9 +11,12 @@ __pycache__
 *.pyd
 *.log
 
+tests
 data/*
 !data/.gitkeep
 
 bin/windows
-*.md
+requirements-dev.txt
+pytest.ini
 
+*.md

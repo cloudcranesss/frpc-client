@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        FRP_VERSION: ${FRP_VERSION:-0.68.0}
     image: frp-web-client:latest
     container_name: frp-web-client
     restart: unless-stopped
