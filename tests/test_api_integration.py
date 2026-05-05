@@ -193,6 +193,32 @@ def test_jump_links_follow_client_config(client: TestClient):
     assert items[0]["url"] == "http://frp.example.com:8088"
 
 
+def test_clear_client_logs_endpoint(client: TestClient):
+    client_id = _first_client_id(client)
+
+    async def seed_logs() -> None:
+        state = await main_mod.frpc_manager._get_or_create_state(client_id)
+        async with state.lock:
+            state.logs.append("line-1")
+            state.logs.append("line-2")
+
+    import asyncio
+
+    asyncio.run(seed_logs())
+
+    before = client.get(f"/api/clients/{client_id}/logs?limit=50")
+    assert before.status_code == 200
+    assert before.json()["items"]
+
+    cleared = client.post(f"/api/clients/{client_id}/logs/clear")
+    assert cleared.status_code == 200
+    assert cleared.json()["success"] is True
+
+    after = client.get(f"/api/clients/{client_id}/logs?limit=50")
+    assert after.status_code == 200
+    assert after.json()["items"] == []
+
+
 def test_auth_profile_update_requires_relogin_and_new_credentials_work(client: TestClient):
     profile = client.get("/api/auth/profile")
     assert profile.status_code == 200

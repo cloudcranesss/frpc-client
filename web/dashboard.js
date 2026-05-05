@@ -23,6 +23,7 @@ const els = {
   stopBtn: document.querySelector("#stop_btn"),
   refreshBtn: document.querySelector("#refresh_btn"),
   logs: document.querySelector("#logs"),
+  logsClearBtn: document.querySelector("#logs_clear_btn"),
   logsToggleBtn: document.querySelector("#logs_toggle_btn"),
   logsToggleLabel: document.querySelector("#logs_toggle_label"),
   preflightPanel: document.querySelector("#preflight_panel"),
@@ -177,6 +178,16 @@ async function loadStatusAndLogs() {
   if (!els.logs) return;
   els.logs.textContent = (logs.items || []).join("\n");
   els.logs.scrollTop = els.logs.scrollHeight;
+}
+
+async function clearLogs() {
+  if (!state.activeClientId) return;
+  await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/logs/clear`, "POST");
+  if (els.logs) {
+    els.logs.textContent = "";
+    els.logs.scrollTop = 0;
+  }
+  setHint("日志已清空。", "info");
 }
 
 async function loadJumpLinks() {
@@ -360,6 +371,9 @@ function bindEvents() {
 
   els.logsToggleBtn?.addEventListener("click", () => {
     toggleLogs(!state.logsExpanded);
+  });
+  els.logsClearBtn?.addEventListener("click", () => {
+    clearLogs().catch((error) => setHint(`清空日志失败: ${error.message}`, "error"));
   });
 
   els.clientList?.addEventListener("click", async (event) => {

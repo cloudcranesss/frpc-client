@@ -45,6 +45,7 @@ def test_dashboard_contains_collapsed_logs_and_preflight_panel():
     assert 'id="jump_count"' in text
     assert 'id="logs_toggle_btn"' in text
     assert 'id="logs_toggle_label"' in text
+    assert 'id="logs_clear_btn"' in text
     assert 'id="logs" class="logs hidden"' in text
     assert 'id="preflight_panel"' in text
     assert 'id="preflight_force_btn"' in text
@@ -131,3 +132,9 @@ def test_dashboard_uses_jump_links_api_with_safe_open():
     assert "/jump-links" in dashboard
     assert 'target="_blank"' in dashboard
     assert 'rel="noopener noreferrer"' in dashboard
+
+
+def test_dashboard_supports_clear_logs_action():
+    dashboard = _read("dashboard.js")
+    assert "/logs/clear" in dashboard
+    assert "logsClearBtn" in dashboard

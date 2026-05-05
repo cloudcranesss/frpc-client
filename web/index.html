@@ -107,10 +107,16 @@
         <section class="panel reveal">
           <div class="panel-head">
             <h2>实时日志</h2>
-            <button id="logs_toggle_btn" class="btn secondary small">
-              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
-              <span id="logs_toggle_label" class="btn-label">展开日志</span>
-            </button>
+            <div class="actions">
+              <button id="logs_clear_btn" class="btn danger small">
+                <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-trash"></use></svg>
+                <span class="btn-label">清空日志</span>
+              </button>
+              <button id="logs_toggle_btn" class="btn secondary small">
+                <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
+                <span id="logs_toggle_label" class="btn-label">展开日志</span>
+              </button>
+            </div>
           </div>
           <pre id="logs" class="logs hidden"></pre>
         </section>

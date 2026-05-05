@@ -25,6 +25,7 @@ def test_minimal_pages_and_core_routes_exist():
     assert "/api/clients/{client_id}/stream" in paths
     assert "/api/clients/{client_id}/preflight" in paths
     assert "/api/clients/{client_id}/events" in paths
+    assert "/api/clients/{client_id}/logs/clear" in paths
     assert "/api/clients/{client_id}/jump-links" in paths
     assert "/api/alerts/channels" in paths
     assert "/api/alerts/rules" in paths

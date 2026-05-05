@@ -763,6 +763,14 @@ async def client_logs(
     return LogsResponse(items=frpc_manager.logs(client_id, limit=limit))
 
 
+@app.post("/api/clients/{client_id}/logs/clear")
+async def clear_client_logs(client_id: str) -> dict[str, bool]:
+    state = await config_store.load_state()
+    _find_client(state, client_id)
+    await frpc_manager.clear_logs(client_id)
+    return {"success": True}
+
+
 @app.get("/api/clients/{client_id}/events", response_model=RuntimeEventsResponse)
 async def client_events(
     client_id: str,

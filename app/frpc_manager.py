@@ -78,6 +78,8 @@ class FrpcManager:
 
     async def stop(self, client_id: str) -> dict[str, int | bool | float | str | None]:
         state = await self._get_or_create_state(client_id)
+        process: subprocess.Popen[bytes] | None = None
+        wait_task: asyncio.Task[None] | None = None
         async with state.lock:
             await self._cancel_restart_task(state)
             if not self._is_running(state):
@@ -85,19 +87,25 @@ class FrpcManager:
                 return self.status(client_id)
 
             assert state.process is not None
+            process = state.process
+            wait_task = state.wait_task
             state.manual_stop_requested = True
             await self._emit_log(client_id, state, "> Stopping frpc...")
-            state.process.terminate()
-            try:
-                await asyncio.wait_for(asyncio.to_thread(state.process.wait), timeout=5)
-            except asyncio.TimeoutError:
-                await self._emit_log(client_id, state, "> Terminate timeout, killing frpc.")
-                state.process.kill()
-                await asyncio.to_thread(state.process.wait)
 
-            if state.wait_task is not None:
-                with contextlib.suppress(asyncio.CancelledError):
-                    await state.wait_task
+        assert process is not None
+        process.terminate()
+        try:
+            await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=5)
+        except asyncio.TimeoutError:
+            await self._emit_log(client_id, state, "> Terminate timeout, killing frpc.")
+            process.kill()
+            await asyncio.to_thread(process.wait)
+
+        if wait_task is not None:
+            with contextlib.suppress(asyncio.CancelledError):
+                await wait_task
+
+        async with state.lock:
             await self._cleanup_tasks(state)
             return self.status(client_id)
 
@@ -166,6 +174,11 @@ class FrpcManager:
         if state is None:
             return []
         return list(state.logs)[-limit:]
+
+    async def clear_logs(self, client_id: str) -> None:
+        state = await self._get_or_create_state(client_id)
+        async with state.lock:
+            state.logs.clear()
 
     async def _spawn_process(
         self,
