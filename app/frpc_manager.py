@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import os
 import re
@@ -51,6 +52,11 @@ class FrpcManager:
         self._states: dict[str, RuntimeState] = {}
         self._registry_lock = asyncio.Lock()
         self._event_callback = event_callback
+        io_workers = max(8, int(os.getenv("FRP_PANEL_FRPC_IO_WORKERS", "16")))
+        self._frpc_io_pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=io_workers,
+            thread_name_prefix="frpc-io",
+        )
 
     async def start(
         self,
@@ -100,13 +106,13 @@ class FrpcManager:
         assert process is not None
         process.terminate()
         try:
-            await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=self._TERM_WAIT_TIMEOUT_SEC)
+            await asyncio.wait_for(self._run_io(process.wait), timeout=self._TERM_WAIT_TIMEOUT_SEC)
         except asyncio.TimeoutError:
             await self._emit_log(client_id, state, "> Terminate timeout, killing frpc.")
             process.kill()
             try:
                 await asyncio.wait_for(
-                    asyncio.to_thread(process.wait),
+                    self._run_io(process.wait),
                     timeout=self._KILL_WAIT_TIMEOUT_SEC,
                 )
             except asyncio.TimeoutError:
@@ -135,6 +141,7 @@ class FrpcManager:
             else:
                 async with state.lock:
                     await self._cleanup_tasks(state)
+        self._frpc_io_pool.shutdown(wait=False, cancel_futures=True)
 
     async def drop_client(self, client_id: str) -> None:
         state = await self._get_or_create_state(client_id)
@@ -222,7 +229,7 @@ class FrpcManager:
 
         try:
             await self._emit_log(client_id, state, f"> Starting frpc: {' '.join(command)}")
-            state.process = await asyncio.to_thread(
+            state.process = await self._run_io(
                 subprocess.Popen,
                 command,
                 stdout=subprocess.PIPE,
@@ -262,7 +269,7 @@ class FrpcManager:
         process = state.process
         if process is None:
             return
-        code = await asyncio.to_thread(process.wait)
+        code = await self._run_io(process.wait)
         restart_delay: float | None = None
         exit_type = "normal_exit" if code == 0 else "abnormal_exit"
         message = f"frpc exited with code {code}."
@@ -333,7 +340,7 @@ class FrpcManager:
         source: str,
     ) -> None:
         while True:
-            line = await asyncio.to_thread(stream.readline)
+            line = await self._run_io(stream.readline)
             if not line:
                 break
             text = self._decode_line(line)
@@ -415,6 +422,10 @@ class FrpcManager:
                 self._event_callback(data),
                 timeout=self._EVENT_CALLBACK_TIMEOUT_SEC,
             )
+
+    async def _run_io(self, func: Callable[..., Any], *args: Any) -> Any:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._frpc_io_pool, func, *args)
 
     async def _publish_status(self, client_id: str, state: RuntimeState) -> None:
         await self._publish(client_id, state, "status", self.status(client_id))
