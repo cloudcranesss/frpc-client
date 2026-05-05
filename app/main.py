@@ -212,6 +212,7 @@ def _client_to_payload(client: ProxyClientConfig) -> AppConfigPayload:
         run_args=client.run_args,
         config_text=client.config_text,
         env=client.env,
+        auto_start=bool(client.auto_start),
     )
 
 
@@ -231,6 +232,7 @@ def _clients_response(state: ClientState) -> ClientsResponse:
                 id=client.id,
                 name=client.name,
                 running=bool(status["running"]),
+                auto_start=bool(client.auto_start),
                 pid=status["pid"],
                 uptime_sec=float(status["uptime_sec"] or 0),
                 last_exit_code=status["last_exit_code"],
@@ -351,6 +353,37 @@ async def _client_preflight(client_id: str) -> dict[str, object]:
     return payload
 
 
+async def _auto_start_clients_on_boot() -> None:
+    state = await config_store.load_state()
+    targets = [item for item in state.clients if item.auto_start]
+    for client in targets:
+        try:
+            preflight = await _client_preflight(client.id)
+            if not bool(preflight.get("ok")):
+                await config_store.append_runtime_event(
+                    client_id=client.id,
+                    event_type="auto_start_preflight_failed",
+                    message="Auto-start preflight failed.",
+                    payload=preflight,
+                )
+                continue
+            cfg = await _resolve_start_config(client.id)
+            await frpc_manager.start(client.id, cfg, config_store.frpc_config_file(client.id))
+            await config_store.append_runtime_event(
+                client_id=client.id,
+                event_type="auto_start_triggered",
+                message="Auto-started on service boot.",
+                payload={"auto_start": True},
+            )
+        except Exception as exc:
+            await config_store.append_runtime_event(
+                client_id=client.id,
+                event_type="auto_start_failed",
+                message="Auto-start failed on service boot.",
+                payload={"error": str(exc)},
+            )
+
+
 def _sse_message(event: str, data: object) -> str:
     payload = json.dumps(data, ensure_ascii=False)
     return f"event: {event}\ndata: {payload}\n\n"
@@ -361,6 +394,7 @@ async def lifespan(_: FastAPI):
     await config_store.init()
     await auth_manager.init()
     await alert_manager.start()
+    await _auto_start_clients_on_boot()
     yield
     await alert_manager.shutdown()
     await frpc_manager.shutdown()
@@ -663,6 +697,7 @@ async def update_client_config(client_id: str, payload: AppConfigPayload) -> App
     client.run_args = payload.run_args.strip()
     client.config_text = payload.config_text
     client.env = payload.env
+    client.auto_start = bool(payload.auto_start)
     saved = await config_store.save_state(state)
     updated = _find_client(saved, client_id)
     await _snapshot("update_client_config")

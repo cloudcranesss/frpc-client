@@ -39,6 +39,7 @@ class ProxyClientConfig:
     run_args: str = ""
     config_text: str = field(default_factory=default_config_text)
     env: dict[str, str] = field(default_factory=dict)
+    auto_start: bool = False
 
 
 @dataclass(slots=True)
@@ -270,8 +271,8 @@ class ConfigStore:
                     conn.execute(
                         """
                         INSERT INTO clients (
-                            id, name, frpc_path, run_args, config_text, is_active, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            id, name, frpc_path, run_args, config_text, auto_start, is_active, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             client.id,
@@ -279,6 +280,7 @@ class ConfigStore:
                             client.frpc_path,
                             client.run_args,
                             client.config_text,
+                            1 if client.auto_start else 0,
                             1 if client.id == state.active_client_id else 0,
                             now,
                             now,
@@ -700,7 +702,7 @@ class ConfigStore:
     def _load_state_from_db(self, conn: sqlite3.Connection) -> ClientState:
         rows = conn.execute(
             """
-            SELECT id, name, frpc_path, run_args, config_text, is_active
+            SELECT id, name, frpc_path, run_args, config_text, auto_start, is_active
             FROM clients
             ORDER BY created_at ASC, id ASC
             """
@@ -722,6 +724,7 @@ class ConfigStore:
                     run_args=str(row["run_args"]),
                     config_text=str(row["config_text"]),
                     env=env,
+                    auto_start=bool(row["auto_start"]),
                 )
             )
             if bool(row["is_active"]):
@@ -761,8 +764,8 @@ class ConfigStore:
                 for client in state.clients:
                     conn.execute(
                         """
-                        INSERT INTO clients (id, name, frpc_path, run_args, config_text, is_active, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO clients (id, name, frpc_path, run_args, config_text, auto_start, is_active, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             client.id,
@@ -770,6 +773,7 @@ class ConfigStore:
                             client.frpc_path,
                             client.run_args,
                             client.config_text,
+                            1 if client.auto_start else 0,
                             1 if client.id == state.active_client_id else 0,
                             now,
                             now,
@@ -789,8 +793,8 @@ class ConfigStore:
         with conn:
             conn.execute(
                 """
-                INSERT INTO clients (id, name, frpc_path, run_args, config_text, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO clients (id, name, frpc_path, run_args, config_text, auto_start, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     default_client.id,
@@ -798,6 +802,7 @@ class ConfigStore:
                     default_client.frpc_path,
                     default_client.run_args,
                     default_client.config_text,
+                    0,
                     1,
                     now,
                     now,
@@ -813,8 +818,8 @@ class ConfigStore:
         with conn:
             conn.execute(
                 """
-                INSERT INTO clients (id, name, frpc_path, run_args, config_text, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO clients (id, name, frpc_path, run_args, config_text, auto_start, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     default_client.id,
@@ -822,6 +827,7 @@ class ConfigStore:
                     default_client.frpc_path,
                     default_client.run_args,
                     default_client.config_text,
+                    0,
                     1,
                     now,
                     now,
@@ -870,6 +876,7 @@ class ConfigStore:
             run_args=str(payload.get("run_args", "")),
             config_text=str(payload.get("config_text", default_config_text())),
             env=self._safe_env(payload.get("env", {})),
+            auto_start=bool(payload.get("auto_start", False)),
         )
 
     def _legacy_client_item(self, payload: dict[str, Any], index: int) -> ProxyClientConfig:
@@ -885,6 +892,7 @@ class ConfigStore:
             run_args=str(payload.get("run_args", "")),
             config_text=str(payload.get("config_text", default_config_text())),
             env=self._safe_env(payload.get("env", {})),
+            auto_start=bool(payload.get("auto_start", False)),
         )
 
     def _normalize_state(self, state: ClientState) -> ClientState:
@@ -906,6 +914,7 @@ class ConfigStore:
                     run_args=client.run_args.strip(),
                     config_text=client.config_text or default_config_text(),
                     env=self._safe_env(client.env),
+                    auto_start=bool(client.auto_start),
                 )
             )
 
@@ -981,6 +990,7 @@ class ConfigStore:
                     frpc_path TEXT NOT NULL,
                     run_args TEXT NOT NULL,
                     config_text TEXT NOT NULL,
+                    auto_start INTEGER NOT NULL DEFAULT 0,
                     is_active INTEGER NOT NULL DEFAULT 0,
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL
@@ -1028,6 +1038,11 @@ class ConfigStore:
                 DROP TABLE IF EXISTS maintenance_state;
                 """
             )
+            try:
+                conn.execute("ALTER TABLE clients ADD COLUMN auto_start INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column name" not in str(exc).lower():
+                    raise
 
     def _dump_bundle_sync(self) -> dict[str, Any]:
         conn = self._connect()
@@ -1043,6 +1058,7 @@ class ConfigStore:
                         "run_args": client.run_args,
                         "config_text": client.config_text,
                         "env": client.env,
+                        "auto_start": bool(client.auto_start),
                     }
                 )
             channels = self._list_alert_channels_sync_with_conn(conn)
@@ -1073,6 +1089,7 @@ class ConfigStore:
                             run_args=str(item.get("run_args", "")),
                             config_text=str(item.get("config_text", default_config_text())),
                             env=self._safe_env(item.get("env", {})),
+                            auto_start=bool(item.get("auto_start", False)),
                         )
                         for item in list(bundle.get("clients") or [])
                         if isinstance(item, dict)
@@ -1098,8 +1115,8 @@ class ConfigStore:
                             continue
                     conn.execute(
                         """
-                        INSERT OR REPLACE INTO clients (id, name, frpc_path, run_args, config_text, is_active, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT OR REPLACE INTO clients (id, name, frpc_path, run_args, config_text, auto_start, is_active, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             client.id,
@@ -1107,6 +1124,7 @@ class ConfigStore:
                             client.frpc_path,
                             client.run_args,
                             client.config_text,
+                            1 if client.auto_start else 0,
                             1 if client.id == state.active_client_id else 0,
                             now,
                             now,

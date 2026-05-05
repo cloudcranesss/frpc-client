@@ -13,6 +13,7 @@ const els = {
   clientName: document.querySelector("#client_name"),
   frpcPath: document.querySelector("#frpc_path"),
   runArgs: document.querySelector("#run_args"),
+  autoStart: document.querySelector("#auto_start"),
   configText: document.querySelector("#config_text"),
   autoPathBtn: document.querySelector("#auto_path_btn"),
   saveBtn: document.querySelector("#save_btn"),
@@ -124,10 +125,11 @@ async function loadClients() {
 async function loadActiveConfig() {
   if (!state.activeClientId) return;
   const payload = await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/config`);
-  if (!els.clientName || !els.frpcPath || !els.runArgs || !els.configText) return;
+  if (!els.clientName || !els.frpcPath || !els.runArgs || !els.autoStart || !els.configText) return;
   els.clientName.value = payload.name || "";
   els.frpcPath.value = payload.frpc_path || "";
   els.runArgs.value = payload.run_args || "";
+  els.autoStart.checked = !!payload.auto_start;
   els.configText.value = payload.config_text || "";
 }
 
@@ -265,12 +267,13 @@ async function runPreflightAndStart() {
 
 async function saveConfig() {
   if (!state.activeClientId) return;
-  if (!els.clientName || !els.frpcPath || !els.runArgs || !els.configText) return;
+  if (!els.clientName || !els.frpcPath || !els.runArgs || !els.autoStart || !els.configText) return;
   await request(`/api/clients/${encodeURIComponent(state.activeClientId)}/config`, "PUT", {
     id: state.activeClientId,
     name: els.clientName.value.trim(),
     frpc_path: els.frpcPath.value.trim(),
     run_args: els.runArgs.value.trim(),
+    auto_start: !!els.autoStart.checked,
     config_text: els.configText.value,
     env: {},
   });

@@ -193,3 +193,49 @@ def test_auth_profile_update_requires_relogin_and_new_credentials_work(client: T
     assert old_login.status_code == 401
     new_login = client.post("/api/auth/login", json={"username": "ops_admin", "password": "SafePass1234"})
     assert new_login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_client_auto_start_persist_and_boot_trigger(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    client_id = _first_client_id(client)
+    cfg_resp = client.get(f"/api/clients/{client_id}/config")
+    assert cfg_resp.status_code == 200
+    cfg = cfg_resp.json()
+    cfg["auto_start"] = True
+    put_resp = client.put(f"/api/clients/{client_id}/config", json=cfg)
+    assert put_resp.status_code == 200
+    assert put_resp.json()["auto_start"] is True
+
+    listing = client.get("/api/clients")
+    assert listing.status_code == 200
+    row = next(item for item in listing.json()["clients"] if item["id"] == client_id)
+    assert row["auto_start"] is True
+
+    async def fake_preflight(_: str):
+        return {"ok": True, "errors": [], "warnings": []}
+
+    async def fake_resolve(cid: str):
+        state = await main_mod.config_store.load_state()
+        return next(item for item in state.clients if item.id == cid)
+
+    calls: list[str] = []
+
+    async def fake_start(cid: str, cfg, config_path):
+        _ = (cfg, config_path)
+        calls.append(cid)
+        return {
+            "running": False,
+            "pid": None,
+            "started_at": None,
+            "uptime_sec": 0,
+            "last_exit_code": 0,
+            "restart_count": 0,
+            "last_error": None,
+        }
+
+    monkeypatch.setattr(main_mod, "_client_preflight", fake_preflight)
+    monkeypatch.setattr(main_mod, "_resolve_start_config", fake_resolve)
+    monkeypatch.setattr(main_mod.frpc_manager, "start", fake_start)
+
+    await main_mod._auto_start_clients_on_boot()
+    assert calls == [client_id]

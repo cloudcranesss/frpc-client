@@ -40,6 +40,7 @@ def test_old_page_files_removed():
 
 def test_dashboard_contains_collapsed_logs_and_preflight_panel():
     text = _read("index.html")
+    assert 'id="auto_start"' in text
     assert 'id="logs_toggle_btn"' in text
     assert 'id="logs_toggle_label"' in text
     assert 'id="logs" class="logs hidden"' in text

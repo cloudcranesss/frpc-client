@@ -10,6 +10,7 @@ class AppConfigPayload(BaseModel):
     run_args: str = Field(default="")
     config_text: str = Field(default="")
     env: dict[str, str] = Field(default_factory=dict)
+    auto_start: bool = False
 
 
 class ClientCreatePayload(BaseModel):
@@ -46,6 +47,7 @@ class ClientListItem(BaseModel):
     id: str
     name: str
     running: bool
+    auto_start: bool = False
     pid: int | None = None
     uptime_sec: float = 0
     last_exit_code: int | None = None
