@@ -169,8 +169,7 @@ class ConfigStore:
             )
 
     async def get_user(self, username: str) -> dict[str, Any] | None:
-        async with self._lock:
-            return await asyncio.to_thread(self._get_user_sync, username)
+        return await asyncio.to_thread(self._get_user_sync, username)
 
     async def upsert_user(
         self,
@@ -179,38 +178,32 @@ class ConfigStore:
         password_hash: str,
         iterations: int,
     ) -> None:
-        async with self._lock:
-            await asyncio.to_thread(
-                self._upsert_user_sync,
-                username,
-                password_salt,
-                password_hash,
-                max(100_000, int(iterations)),
-            )
+        await asyncio.to_thread(
+            self._upsert_user_sync,
+            username,
+            password_salt,
+            password_hash,
+            max(100_000, int(iterations)),
+        )
 
     async def count_users(self) -> int:
-        async with self._lock:
-            return await asyncio.to_thread(self._count_users_sync)
+        return await asyncio.to_thread(self._count_users_sync)
 
     async def create_session(self, token: str, username: str, expires_at: float) -> None:
-        async with self._lock:
-            await asyncio.to_thread(self._create_session_sync, token, username, float(expires_at))
+        await asyncio.to_thread(self._create_session_sync, token, username, float(expires_at))
 
     async def get_session_username(self, token: str | None) -> str | None:
         if not token:
             return None
-        async with self._lock:
-            return await asyncio.to_thread(self._get_session_username_sync, token, time.time())
+        return await asyncio.to_thread(self._get_session_username_sync, token, time.time())
 
     async def delete_session(self, token: str | None) -> None:
         if not token:
             return
-        async with self._lock:
-            await asyncio.to_thread(self._delete_session_sync, token)
+        await asyncio.to_thread(self._delete_session_sync, token)
 
     async def delete_sessions_by_username(self, username: str) -> None:
-        async with self._lock:
-            await asyncio.to_thread(self._delete_sessions_by_username_sync, username)
+        await asyncio.to_thread(self._delete_sessions_by_username_sync, username)
 
     async def replace_user(
         self,
@@ -220,15 +213,14 @@ class ConfigStore:
         password_hash: str,
         iterations: int,
     ) -> str:
-        async with self._lock:
-            return await asyncio.to_thread(
-                self._replace_user_sync,
-                current_username,
-                new_username,
-                password_salt,
-                password_hash,
-                max(100_000, int(iterations)),
-            )
+        return await asyncio.to_thread(
+            self._replace_user_sync,
+            current_username,
+            new_username,
+            password_salt,
+            password_hash,
+            max(100_000, int(iterations)),
+        )
 
     async def dump_bundle(self) -> dict[str, Any]:
         async with self._lock:
@@ -957,9 +949,10 @@ class ConfigStore:
         path.replace(bak)
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._db_file)
+        conn = sqlite3.connect(self._db_file, timeout=5.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
