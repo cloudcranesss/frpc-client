@@ -41,6 +41,11 @@ class FrpcManager:
     _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
     _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
     _DECODINGS = ("utf-8", "utf-8-sig", "gb18030", "cp936")
+    _TERM_WAIT_TIMEOUT_SEC = 5.0
+    _KILL_WAIT_TIMEOUT_SEC = 3.0
+    _WAIT_TASK_TIMEOUT_SEC = 3.0
+    _TASK_CLEANUP_TIMEOUT_SEC = 1.5
+    _EVENT_CALLBACK_TIMEOUT_SEC = 2.0
 
     def __init__(self, event_callback: RuntimeEventCallback | None = None) -> None:
         self._states: dict[str, RuntimeState] = {}
@@ -95,15 +100,25 @@ class FrpcManager:
         assert process is not None
         process.terminate()
         try:
-            await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=5)
+            await asyncio.wait_for(asyncio.to_thread(process.wait), timeout=self._TERM_WAIT_TIMEOUT_SEC)
         except asyncio.TimeoutError:
             await self._emit_log(client_id, state, "> Terminate timeout, killing frpc.")
             process.kill()
-            await asyncio.to_thread(process.wait)
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(process.wait),
+                    timeout=self._KILL_WAIT_TIMEOUT_SEC,
+                )
+            except asyncio.TimeoutError:
+                await self._emit_log(client_id, state, "> Kill timeout, force cleanup and continue.")
 
         if wait_task is not None:
             with contextlib.suppress(asyncio.CancelledError):
-                await wait_task
+                try:
+                    await asyncio.wait_for(wait_task, timeout=self._WAIT_TASK_TIMEOUT_SEC)
+                except asyncio.TimeoutError:
+                    wait_task.cancel()
+                    await self._emit_log(client_id, state, "> Exit monitor timeout, cancelled.")
 
         async with state.lock:
             await self._cleanup_tasks(state)
@@ -332,12 +347,18 @@ class FrpcManager:
             with contextlib.suppress(asyncio.CancelledError):
                 if not task.done():
                     task.cancel()
-                await task
+                try:
+                    await asyncio.wait_for(task, timeout=self._TASK_CLEANUP_TIMEOUT_SEC)
+                except asyncio.TimeoutError:
+                    pass
         if state.wait_task is not None:
             with contextlib.suppress(asyncio.CancelledError):
                 if not state.wait_task.done():
                     state.wait_task.cancel()
-                await state.wait_task
+                try:
+                    await asyncio.wait_for(state.wait_task, timeout=self._TASK_CLEANUP_TIMEOUT_SEC)
+                except asyncio.TimeoutError:
+                    pass
         state.stdout_task = None
         state.stderr_task = None
         state.wait_task = None
@@ -384,7 +405,16 @@ class FrpcManager:
         state = await self._get_or_create_state(client_id)
         await self._publish(client_id, state, "event", data)
         if self._event_callback is not None:
-            await self._event_callback(data)
+            asyncio.create_task(self._run_event_callback(data))
+
+    async def _run_event_callback(self, data: dict[str, Any]) -> None:
+        if self._event_callback is None:
+            return
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(
+                self._event_callback(data),
+                timeout=self._EVENT_CALLBACK_TIMEOUT_SEC,
+            )
 
     async def _publish_status(self, client_id: str, state: RuntimeState) -> None:
         await self._publish(client_id, state, "status", self.status(client_id))
