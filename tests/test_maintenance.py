@@ -20,10 +20,34 @@ def test_extract_template_variables():
     assert vars_found == ["REMOTE_PORT", "SERVER_ADDR"]
 
 
-def test_preflight_detects_invalid_toml():
+def test_preflight_detects_invalid_config():
     result = preflight_config("frpc", "serverAddr = \n", "")
     assert result["ok"] is False
-    assert any("TOML parse error" in msg for msg in result["errors"])
+    assert any("Config parse error" in msg for msg in result["errors"])
+
+
+def test_preflight_supports_ini_and_json():
+    ini_text = (
+        "[common]\n"
+        "server_addr = 127.0.0.1\n"
+        "server_port = 7000\n\n"
+        "[web]\n"
+        "type = tcp\n"
+        "local_port = 8080\n"
+        "remote_port = 6000\n"
+    )
+    json_text = (
+        '{'
+        '"serverAddr":"127.0.0.1",'
+        '"serverPort":7000,'
+        '"proxies":[{"name":"web","type":"tcp","localPort":8080,"remotePort":6000}]'
+        "}"
+    )
+    ini_result = preflight_config("frpc", ini_text, "")
+    json_result = preflight_config("frpc", json_text, "")
+    assert ini_result["ok"] is True
+    assert any("INI format is supported" in msg for msg in ini_result["warnings"])
+    assert json_result["ok"] is True
 
 
 def test_export_and_import_zip_roundtrip():

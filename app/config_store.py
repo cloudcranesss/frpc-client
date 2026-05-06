@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .frpc_config_parser import detect_config_format
+
 
 def default_frpc_path() -> str:
     system = platform.system().lower()
@@ -238,9 +240,16 @@ class ConfigStore:
         async with self._lock:
             await asyncio.to_thread(self._apply_bundle_sync, bundle, mode)
 
-    def frpc_config_file(self, client_id: str) -> Path:
+    def frpc_config_file(self, client_id: str, config_text: str | None = None) -> Path:
         safe = self._safe_filename(client_id)
-        return self._configs_dir / f"{safe}.toml"
+        ext = "toml"
+        if config_text is not None:
+            try:
+                fmt = detect_config_format(config_text)
+                ext = "json" if fmt == "json" else ("ini" if fmt == "ini" else "toml")
+            except ValueError:
+                ext = "toml"
+        return self._configs_dir / f"{safe}.{ext}"
 
     def _init_sync(self) -> None:
         if not self._store_file.exists():
@@ -899,12 +908,14 @@ class ConfigStore:
         state = self._state_from_payload(payload.get("state", {}))
         used: set[Path] = set()
         for client in state.clients:
-            path = self.frpc_config_file(client.id)
+            path = self.frpc_config_file(client.id, client.config_text)
             path.write_text(client.config_text, encoding="utf-8")
             used.add(path.resolve())
-        for item in self._configs_dir.glob("*.toml"):
-            if item.resolve() not in used:
-                item.unlink(missing_ok=True)
+        for client in state.clients:
+            prefix = f"{self._safe_filename(client.id)}."
+            for item in self._configs_dir.glob(f"{prefix}*"):
+                if item.resolve() not in used:
+                    item.unlink(missing_ok=True)
 
     def _read_store(self) -> dict[str, Any]:
         if not self._store_file.exists():

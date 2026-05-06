@@ -8,7 +8,6 @@ from pathlib import Path
 import platform
 import shutil
 import time
-import tomllib
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +24,7 @@ from .config_store import (
     make_client,
 )
 from .frpc_manager import FrpcManager
+from .frpc_config_parser import parse_proxy_config
 from .maintenance import (
     build_export_zip,
     parse_import_zip,
@@ -268,8 +268,8 @@ def _build_jump_links(client: ProxyClientConfig) -> list[JumpLinkItem]:
     if not config_text:
         return []
     try:
-        parsed = tomllib.loads(config_text)
-    except tomllib.TOMLDecodeError:
+        _, parsed = parse_proxy_config(config_text)
+    except ValueError:
         return []
 
     server_addr = str(parsed.get("serverAddr", "")).strip()
@@ -370,7 +370,11 @@ async def _auto_start_clients_on_boot() -> None:
                 )
                 continue
             cfg = await _resolve_start_config(client.id)
-            await frpc_manager.start(client.id, cfg, config_store.frpc_config_file(client.id))
+            await frpc_manager.start(
+                client.id,
+                cfg,
+                config_store.frpc_config_file(client.id, cfg.config_text),
+            )
             await config_store.append_runtime_event(
                 client_id=client.id,
                 event_type="auto_start_triggered",
@@ -791,7 +795,7 @@ async def start_client(client_id: str, force: bool = Query(default=False)) -> St
     status_payload = await frpc_manager.start(
         client_id,
         cfg,
-        config_store.frpc_config_file(client_id),
+        config_store.frpc_config_file(client_id, cfg.config_text),
     )
     await _audit("start_client", client_id, {"force": force})
     return StatusResponse(**status_payload)

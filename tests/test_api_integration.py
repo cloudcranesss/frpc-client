@@ -223,6 +223,43 @@ def test_jump_links_follow_client_config(client: TestClient):
     assert items[0]["url"] == "http://frp.example.com:8088"
 
 
+def test_jump_links_support_ini_and_json(client: TestClient):
+    client_id = _first_client_id(client)
+    cfg_resp = client.get(f"/api/clients/{client_id}/config")
+    assert cfg_resp.status_code == 200
+    cfg = cfg_resp.json()
+
+    cfg["config_text"] = (
+        "[common]\n"
+        "server_addr = frp.example.com\n"
+        "server_port = 7000\n\n"
+        "[api]\n"
+        "type = tcp\n"
+        "local_port = 9000\n"
+        "remote_port = 9100\n"
+    )
+    put_resp = client.put(f"/api/clients/{client_id}/config", json=cfg)
+    assert put_resp.status_code == 200
+    links_ini = client.get(f"/api/clients/{client_id}/jump-links")
+    assert links_ini.status_code == 200
+    ini_items = links_ini.json()["items"]
+    assert len(ini_items) == 1
+    assert ini_items[0]["url"] == "http://frp.example.com:9100"
+
+    cfg["config_text"] = (
+        '{"serverAddr":"frp.example.com","serverPort":7000,'
+        '"proxies":[{"name":"web-json","type":"http","localPort":8080,"remotePort":9200}]}'
+    )
+    put_resp2 = client.put(f"/api/clients/{client_id}/config", json=cfg)
+    assert put_resp2.status_code == 200
+    links_json = client.get(f"/api/clients/{client_id}/jump-links")
+    assert links_json.status_code == 200
+    json_items = links_json.json()["items"]
+    assert len(json_items) == 1
+    assert json_items[0]["proxy_name"] == "web-json"
+    assert json_items[0]["url"] == "http://frp.example.com:9200"
+
+
 def test_clear_client_logs_endpoint(client: TestClient):
     client_id = _first_client_id(client)
 

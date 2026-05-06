@@ -49,3 +49,24 @@ async def test_default_alert_rules_exist(tmp_path: Path):
     assert rules["on_abnormal_exit"] is True
     assert rules["on_restart_threshold"] is True
     assert rules["restart_threshold"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_sync_config_file_extension_follows_format(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    store = ConfigStore(data_dir)
+    await store.init()
+    state = await store.load_state()
+    client = state.clients[0]
+
+    client.config_text = (
+        "[common]\n"
+        "server_addr = 127.0.0.1\n"
+        "server_port = 7000\n\n"
+        "[api]\n"
+        "type = tcp\n"
+        "local_port = 9000\n"
+        "remote_port = 9100\n"
+    )
+    await store.save_state(state)
+    assert store.frpc_config_file(client.id, client.config_text).suffix == ".ini"

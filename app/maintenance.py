@@ -9,9 +9,10 @@ import re
 import shutil
 import sys
 import time
-import tomllib
 import zipfile
 from typing import Any
+
+from .frpc_config_parser import detect_config_format, parse_proxy_config
 
 
 SENSITIVE_KEYWORDS = ("password", "token", "secret", "apikey", "api_key", "auth", "private")
@@ -54,7 +55,12 @@ def build_export_zip(bundle: dict[str, Any]) -> bytes:
             if not client_id:
                 continue
             config_text = str(client.get("config_text", ""))
-            zf.writestr(f"configs/{client_id}.toml", config_text)
+            try:
+                fmt = detect_config_format(config_text)
+            except ValueError:
+                fmt = "toml"
+            ext = "toml" if fmt == "toml" else ("ini" if fmt == "ini" else "json")
+            zf.writestr(f"configs/{client_id}.{ext}", config_text)
     return buff.getvalue()
 
 
@@ -123,10 +129,12 @@ def preflight_config(
         return {"ok": False, "errors": errors, "warnings": warnings}
 
     try:
-        payload = tomllib.loads(config_text)
-    except tomllib.TOMLDecodeError as exc:
-        errors.append(f"TOML parse error: {exc}")
+        fmt, payload = parse_proxy_config(config_text)
+    except ValueError as exc:
+        errors.append(f"Config parse error: {exc}")
         return {"ok": False, "errors": errors, "warnings": warnings}
+    if fmt == "ini":
+        warnings.append("INI format is supported but considered legacy; prefer TOML/JSON.")
 
     server_addr = str(payload.get("serverAddr", "")).strip()
     if not server_addr:
