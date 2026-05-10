@@ -33,6 +33,7 @@ from .maintenance import (
     redact_sensitive,
     system_diagnostics,
 )
+from .site_aggregator import SiteAggregator
 from .schemas import (
     AlertChannelPayload,
     AlertChannelResponse,
@@ -57,6 +58,8 @@ from .schemas import (
     PreflightResponse,
     RuntimeEventItem,
     RuntimeEventsResponse,
+    SuccessfulSiteItem,
+    SuccessfulSitesResponse,
     StatusResponse,
     UpdateAuthProfilePayload,
 )
@@ -111,6 +114,27 @@ async def handle_runtime_event(event: dict[str, object]) -> None:
 
 
 frpc_manager = FrpcManager(event_callback=handle_runtime_event)
+
+
+async def _load_clients_for_sites() -> list[ProxyClientConfig]:
+    state = await config_store.load_state()
+    return state.clients
+
+
+async def _record_site_probe_failure(
+    client_id: str,
+    message: str,
+    payload: dict[str, object],
+) -> None:
+    await config_store.append_runtime_event(
+        client_id=client_id,
+        event_type="sites_probe_failure",
+        message=message,
+        payload=payload,
+    )
+
+
+site_aggregator: SiteAggregator
 
 
 def _is_public_path(path: str) -> bool:
@@ -304,6 +328,13 @@ def _build_jump_links(client: ProxyClientConfig) -> list[JumpLinkItem]:
     return items
 
 
+site_aggregator = SiteAggregator(
+    load_clients=_load_clients_for_sites,
+    build_jump_links=_build_jump_links,
+    on_probe_failure=_record_site_probe_failure,
+)
+
+
 async def _resolve_start_config(client_id: str) -> ProxyClientConfig:
     state = await config_store.load_state()
     client = _find_client(state, client_id)
@@ -413,8 +444,10 @@ async def lifespan(_: FastAPI):
     await config_store.init()
     await auth_manager.init()
     await alert_manager.start()
+    await site_aggregator.start()
     await _auto_start_clients_on_boot()
     yield
+    await site_aggregator.shutdown()
     await alert_manager.shutdown()
     await frpc_manager.shutdown()
 
@@ -481,6 +514,54 @@ async def health_ready() -> dict[str, str]:
 @app.get("/")
 async def home() -> HTMLResponse:
     return _render_page("index.html")
+
+
+@app.get("/console")
+async def console_page() -> HTMLResponse:
+    return _render_page("console.html")
+
+
+@app.get("/dashboard")
+async def dashboard_compat() -> RedirectResponse:
+    return RedirectResponse(url="/console", status_code=302)
+
+
+@app.get("/api/sites/successful", response_model=SuccessfulSitesResponse)
+async def successful_sites() -> SuccessfulSitesResponse:
+    rows = await site_aggregator.get_successful_sites()
+    return SuccessfulSitesResponse(items=[SuccessfulSiteItem(**item) for item in rows])
+
+
+@app.get("/api/sites/stream")
+async def sites_stream(request: Request) -> StreamingResponse:
+    queue: asyncio.Queue[dict[str, object]] = asyncio.Queue(maxsize=256)
+    await site_aggregator.subscribe(queue)
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    yield _sse_message("heartbeat", {})
+                    continue
+                event_name = str(item.get("event", "heartbeat"))
+                data = item.get("data", {})
+                yield _sse_message(event_name, data)
+        finally:
+            await site_aggregator.unsubscribe(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/events")

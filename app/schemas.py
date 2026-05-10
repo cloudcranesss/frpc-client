@@ -104,6 +104,23 @@ class JumpLinksResponse(BaseModel):
     items: list[JumpLinkItem]
 
 
+class SuccessfulSiteItem(BaseModel):
+    client_id: str
+    client_name: str
+    proxy_name: str
+    proxy_type: str
+    url: str
+    probe_ok: bool
+    http_status: int | None = None
+    latency_ms: int | None = None
+    last_checked_at: float | None = None
+    error: str | None = None
+
+
+class SuccessfulSitesResponse(BaseModel):
+    items: list[SuccessfulSiteItem]
+
+
 class RuntimeEventItem(BaseModel):
     id: int
     client_id: str

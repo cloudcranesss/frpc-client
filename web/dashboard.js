@@ -457,7 +457,7 @@ function bindEvents() {
 }
 
 async function init() {
-  markActiveNav("dashboard");
+  markActiveNav("console");
   initThemePicker(els.themeMode);
   toggleLogs(false);
   hidePreflightPanel();

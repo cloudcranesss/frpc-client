@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FRP 控制台</title>
+    <link rel="stylesheet" href="/web/style.css?v=__ASSET_VERSION__" />
+  </head>
+  <body data-page="console" data-asset-version="__ASSET_VERSION__">
+    <header class="site-header">
+      <div class="brand">
+        <h1>FRP 面板</h1>
+        <p>轻量客户端管理</p>
+      </div>
+      <nav class="nav-tabs" aria-label="主导航">
+        <a href="/" data-nav="home">主页</a>
+        <a href="/console" data-nav="console">控制台</a>
+        <a href="/settings" data-nav="settings">设置</a>
+      </nav>
+      <div class="head-actions">
+        <select id="theme_mode" class="theme-select" aria-label="主题模式">
+          <option value="system">跟随系统</option>
+          <option value="light">浅色主题</option>
+          <option value="dark">深色主题</option>
+        </select>
+        <span id="user_badge" class="user-badge">未登录</span>
+        <button id="logout_btn" class="btn danger small">
+          <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-logout"></use></svg>
+          <span class="btn-label">退出登录</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="dashboard-grid">
+      <section class="dashboard-main">
+        <section class="panel stage reveal">
+          <h2>客户端配置</h2>
+          <div class="field">
+            <label for="client_name">客户端名称</label>
+            <input id="client_name" placeholder="例如: moviepilot-prod" />
+          </div>
+          <div class="field">
+            <label for="frpc_path">frpc 路径</label>
+            <input id="frpc_path" placeholder="例如: bin/linux/frpc 或 frpc" />
+          </div>
+          <div class="field">
+            <label for="run_args">运行参数</label>
+            <input id="run_args" placeholder="例如: --log-level info" />
+          </div>
+          <div class="field checkbox-field">
+            <input id="auto_start" type="checkbox" />
+            <label for="auto_start">开机自启动</label>
+          </div>
+          <div class="field">
+            <label for="config_text">frpc 配置（TOML/INI/JSON）</label>
+            <textarea id="config_text" rows="12"></textarea>
+          </div>
+          <div class="actions">
+            <button id="auto_path_btn" class="btn secondary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-magic"></use></svg>
+              <span class="btn-label">自动路径</span>
+            </button>
+            <button id="save_btn" class="btn secondary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-save"></use></svg>
+              <span class="btn-label">保存配置</span>
+            </button>
+            <button id="start_btn" class="btn primary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-play"></use></svg>
+              <span class="btn-label">启动</span>
+            </button>
+            <button id="stop_btn" class="btn danger">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-stop"></use></svg>
+              <span class="btn-label">停止</span>
+            </button>
+            <button id="refresh_btn" class="btn">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
+              <span class="btn-label">刷新</span>
+            </button>
+          </div>
+
+          <section id="preflight_panel" class="preflight-panel hidden" aria-live="polite">
+            <div class="panel-head">
+              <h3>启动前预检</h3>
+              <button id="preflight_close_btn" class="btn ghost small">
+                <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-close"></use></svg>
+                <span class="btn-label">关闭</span>
+              </button>
+            </div>
+            <p id="preflight_summary" class="hint info"></p>
+            <div id="preflight_errors_wrap" class="preflight-block hidden">
+              <p class="preflight-title error">错误</p>
+              <ul id="preflight_errors" class="preflight-list"></ul>
+            </div>
+            <div id="preflight_warnings_wrap" class="preflight-block hidden">
+              <p class="preflight-title warn">警告</p>
+              <ul id="preflight_warnings" class="preflight-list"></ul>
+            </div>
+            <div class="actions two">
+              <button id="preflight_force_btn" class="btn danger hidden">
+                <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-force"></use></svg>
+                <span class="btn-label">忽略错误并强制启动</span>
+              </button>
+            </div>
+          </section>
+          <p id="hint" class="hint info"></p>
+        </section>
+
+        <section class="panel reveal">
+          <div class="panel-head">
+            <h2>实时日志</h2>
+            <div class="actions">
+              <button id="logs_clear_btn" class="btn danger small">
+                <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-trash"></use></svg>
+                <span class="btn-label">清空日志</span>
+              </button>
+              <button id="logs_toggle_btn" class="btn secondary small">
+                <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
+                <span id="logs_toggle_label" class="btn-label">展开日志</span>
+              </button>
+            </div>
+          </div>
+          <pre id="logs" class="logs hidden"></pre>
+        </section>
+      </section>
+
+      <aside class="dashboard-side">
+        <section class="panel compact reveal">
+          <div class="panel-head">
+            <h2>运行状态</h2>
+            <div id="status-pill" class="pill offline">未运行</div>
+          </div>
+          <p id="status_meta" class="hint info"></p>
+        </section>
+
+        <section class="panel sidebar reveal">
+          <div class="panel-head">
+            <h2>客户端列表</h2>
+            <button id="add_client_btn" class="btn secondary small">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-plus"></use></svg>
+              <span class="btn-label">新增</span>
+            </button>
+          </div>
+          <div id="client_list" class="client-list"></div>
+          <button id="delete_client_btn" class="btn danger">
+            <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-trash"></use></svg>
+            <span class="btn-label">删除当前客户端</span>
+          </button>
+        </section>
+
+        <section class="panel reveal">
+          <div class="jump-header">
+            <span>网址跳转</span>
+            <span id="jump_count" class="jump-count">0</span>
+          </div>
+          <div id="jump_links" class="jump-links">
+            <div class="jump-empty">暂无可跳转链接。</div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/web/shared.js?v=__ASSET_VERSION__" type="module"></script>
+    <script src="/web/dashboard.js?v=__ASSET_VERSION__" type="module"></script>
+  </body>
+</html>

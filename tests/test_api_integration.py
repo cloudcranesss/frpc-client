@@ -15,6 +15,28 @@ from app.config_store import ConfigStore
 from app.frpc_manager import FrpcManager
 
 
+class DummySiteAggregator:
+    def __init__(self) -> None:
+        self.items: list[dict[str, object]] = []
+        self.subscribers: set = set()
+
+    async def start(self) -> None:
+        return
+
+    async def shutdown(self) -> None:
+        self.subscribers.clear()
+
+    async def get_successful_sites(self) -> list[dict[str, object]]:
+        return [dict(item) for item in self.items]
+
+    async def subscribe(self, queue) -> None:
+        self.subscribers.add(queue)
+        await queue.put({"event": "snapshot", "data": {"items": await self.get_successful_sites()}})
+
+    async def unsubscribe(self, queue) -> None:
+        self.subscribers.discard(queue)
+
+
 def _build_import_zip() -> bytes:
     buff = io.BytesIO()
     payload = {
@@ -50,7 +72,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(main_mod, "auth_manager", auth)
 
     frpc = FrpcManager(event_callback=main_mod.handle_runtime_event)
+    sites = DummySiteAggregator()
     monkeypatch.setattr(main_mod, "frpc_manager", frpc)
+    monkeypatch.setattr(main_mod, "site_aggregator", sites)
     monkeypatch.setattr(main_mod, "login_limiter", main_mod.LoginRateLimiter())
 
     with TestClient(main_mod.app) as api:
@@ -84,7 +108,7 @@ def test_page_redirects_to_settings(client: TestClient):
 
 
 def test_html_pages_inject_asset_version_and_disable_cache(client: TestClient):
-    for path in ("/", "/settings", "/login"):
+    for path in ("/", "/console", "/settings", "/login"):
         resp = client.get(path)
         assert resp.status_code == 200
         assert "__ASSET_VERSION__" not in resp.text
@@ -111,6 +135,35 @@ def test_login_form_fallback_flow(client: TestClient):
     assert resp.headers.get("location") == "/"
     cookie = resp.headers.get("set-cookie", "")
     assert "frp_panel_session=" in cookie
+
+
+def test_dashboard_redirects_to_console(client: TestClient):
+    resp = client.get("/dashboard", follow_redirects=False)
+    assert resp.status_code in {302, 307}
+    assert resp.headers["location"] == "/console"
+
+
+def test_successful_sites_snapshot(client: TestClient):
+    main_mod.site_aggregator.items = [
+        {
+            "client_id": "c1",
+            "client_name": "主客户端",
+            "proxy_name": "web",
+            "proxy_type": "http",
+            "url": "http://example.com:6000",
+            "probe_ok": True,
+            "http_status": 200,
+            "latency_ms": 12,
+            "last_checked_at": 100.0,
+            "error": None,
+        }
+    ]
+    snap = client.get("/api/sites/successful")
+    assert snap.status_code == 200
+    body = snap.json()
+    assert isinstance(body.get("items"), list)
+    assert body["items"][0]["url"] == "http://example.com:6000"
+
 
 
 def test_maintenance_download_methods(client: TestClient):

@@ -12,7 +12,7 @@ def _read(name: str) -> str:
 
 
 def test_pages_include_theme_picker_and_shared_runtime():
-    for page in ("index.html", "settings.html", "login.html"):
+    for page in ("index.html", "console.html", "settings.html", "login.html"):
         text = _read(page)
         assert 'id="theme_mode"' in text
         assert '<script src="/web/shared.js?v=__ASSET_VERSION__" type="module"></script>' in text
@@ -20,10 +20,11 @@ def test_pages_include_theme_picker_and_shared_runtime():
         assert "data-page=" in text
 
 
-def test_nav_is_reduced_to_two_entries():
-    for page in ("index.html", "settings.html"):
+def test_nav_has_home_console_settings_entries():
+    for page in ("index.html", "console.html", "settings.html"):
         text = _read(page)
-        assert 'href="/" data-nav="dashboard"' in text
+        assert 'href="/" data-nav="home"' in text
+        assert 'href="/console" data-nav="console"' in text
         assert 'href="/settings" data-nav="settings"' in text
         assert 'href="/events"' not in text
         assert 'href="/alerts"' not in text
@@ -39,8 +40,8 @@ def test_old_page_files_removed():
     assert not (WEB / "maintenance.js").exists()
 
 
-def test_dashboard_contains_collapsed_logs_and_preflight_panel():
-    text = _read("index.html")
+def test_console_contains_collapsed_logs_and_preflight_panel():
+    text = _read("console.html")
     assert 'id="auto_start"' in text
     assert 'id="jump_links"' in text
     assert 'id="jump_count"' in text
@@ -50,6 +51,14 @@ def test_dashboard_contains_collapsed_logs_and_preflight_panel():
     assert 'id="logs" class="logs hidden"' in text
     assert 'id="preflight_panel"' in text
     assert 'id="preflight_force_btn"' in text
+
+
+def test_home_page_contains_successful_sites_block():
+    text = _read("index.html")
+    assert 'id="sites_list"' in text
+    assert 'id="sites_refresh_btn"' in text
+    assert 'id="sites_summary"' in text
+    assert 'src="/web/sites.js?v=__ASSET_VERSION__"' in text
 
 
 def test_settings_page_contains_account_alerts_and_backup_sections():
@@ -116,7 +125,7 @@ def test_svg_sprite_exists_and_has_core_symbols():
 
 
 def test_pages_use_svg_button_icon_markup():
-    for page in ("index.html", "settings.html", "login.html"):
+    for page in ("index.html", "console.html", "settings.html", "login.html"):
         text = _read(page)
         assert 'class="btn-icon"' in text
         assert 'class="btn-label"' in text
@@ -130,14 +139,21 @@ def test_dynamic_action_buttons_support_svg_click_target():
     assert 'closest("button[data-client-id]")' in dashboard
 
 
-def test_dashboard_uses_jump_links_api_with_safe_open():
+def test_console_uses_jump_links_api_with_safe_open():
     dashboard = _read("dashboard.js")
     assert "/jump-links" in dashboard
     assert 'target="_blank"' in dashboard
     assert 'rel="noopener noreferrer"' in dashboard
 
 
-def test_dashboard_supports_clear_logs_action():
+def test_console_supports_clear_logs_action():
     dashboard = _read("dashboard.js")
     assert "/logs/clear" in dashboard
     assert "logsClearBtn" in dashboard
+
+
+def test_home_page_uses_sites_api_and_stream():
+    text = _read("sites.js")
+    assert "/api/sites/successful" in text
+    assert "/api/sites/stream" in text
+    assert 'target="_blank"' in text

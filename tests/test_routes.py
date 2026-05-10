@@ -17,11 +17,15 @@ def test_legacy_single_client_routes_removed():
 def test_minimal_pages_and_core_routes_exist():
     paths = {route.path for route in app.routes}
     assert "/" in paths
+    assert "/console" in paths
+    assert "/dashboard" in paths
     assert "/settings" in paths
     assert "/login" in paths
     assert "/events" in paths
     assert "/alerts" in paths
     assert "/maintenance" in paths
+    assert "/api/sites/successful" in paths
+    assert "/api/sites/stream" in paths
     assert "/api/clients/{client_id}/stream" in paths
     assert "/api/clients/{client_id}/preflight" in paths
     assert "/api/clients/{client_id}/events" in paths
