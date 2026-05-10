@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -129,11 +130,22 @@ class SiteAggregator:
                 "url": getattr(link, "url", ""),
             }
         proxy_type = str(link_data.get("proxy_type", "")).strip().lower()
-        if proxy_type not in {"http", "https"}:
+        if proxy_type not in {"http", "https", "tcp"}:
             return None
         url = str(link_data.get("url", "")).strip()
-        if not (url.startswith("http://") or url.startswith("https://")):
-            return None
+        server_addr = str(link_data.get("server_addr", "")).strip()
+        remote_port = link_data.get("remote_port")
+        try:
+            remote_port_value = int(remote_port) if remote_port is not None else None
+        except (TypeError, ValueError):
+            remote_port_value = None
+        if proxy_type in {"http", "https"}:
+            if not (url.startswith("http://") or url.startswith("https://")):
+                return None
+        else:
+            if not server_addr or remote_port_value is None:
+                return None
+            url = f"tcp://{server_addr}:{remote_port_value}"
         proxy_name = str(link_data.get("proxy_name", "")).strip() or "proxy"
         return {
             "client_id": client.id,
@@ -141,6 +153,8 @@ class SiteAggregator:
             "proxy_name": proxy_name,
             "proxy_type": proxy_type,
             "url": url,
+            "server_addr": server_addr or None,
+            "remote_port": remote_port_value,
             "probe_ok": False,
             "http_status": None,
             "latency_ms": None,
@@ -155,7 +169,15 @@ class SiteAggregator:
 
         async def worker(row: dict[str, object]) -> dict[str, object]:
             async with sem:
-                result = await self._probe_url(str(row["url"]))
+                probe_type = str(row.get("proxy_type", ""))
+                if probe_type in {"http", "https"}:
+                    result = await self._probe_http(str(row["url"]))
+                elif probe_type == "tcp":
+                    host = str(row.get("server_addr") or "")
+                    port = row.get("remote_port")
+                    result = await self._probe_tcp(host, int(port) if isinstance(port, int) else 0)
+                else:
+                    result = _ProbeResult(ok=False, status=None, latency_ms=None, error=f"unsupported probe type: {probe_type}")
             now = time.time()
             row["probe_ok"] = result.ok
             row["http_status"] = result.status
@@ -167,7 +189,7 @@ class SiteAggregator:
         tasks = [asyncio.create_task(worker(dict(item))) for item in items]
         return await asyncio.gather(*tasks)
 
-    async def _probe_url(self, url: str) -> _ProbeResult:
+    async def _probe_http(self, url: str) -> _ProbeResult:
         def _request(method: str) -> tuple[int, int]:
             start = time.perf_counter()
             req = urllib.request.Request(url, method=method)
@@ -200,6 +222,23 @@ class SiteAggregator:
                 latency_ms=None,
                 error=f"http status {exc.code}",
             )
+        except Exception as exc:
+            return _ProbeResult(ok=False, status=None, latency_ms=None, error=str(exc))
+
+    async def _probe_tcp(self, host: str, port: int) -> _ProbeResult:
+        if not host or port <= 0:
+            return _ProbeResult(ok=False, status=None, latency_ms=None, error="invalid tcp target")
+
+        def _connect() -> int:
+            start = time.perf_counter()
+            with socket.create_connection((host, port), timeout=self._timeout_sec):
+                pass
+            latency = int((time.perf_counter() - start) * 1000)
+            return max(1, latency)
+
+        try:
+            latency = await asyncio.to_thread(_connect)
+            return _ProbeResult(ok=True, status=200, latency_ms=latency, error=None)
         except Exception as exc:
             return _ProbeResult(ok=False, status=None, latency_ms=None, error=str(exc))
 
