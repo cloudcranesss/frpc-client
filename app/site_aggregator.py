@@ -4,10 +4,9 @@ import asyncio
 import json
 import socket
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
+from urllib.parse import urlsplit
 
 from .config_store import ProxyClientConfig
 
@@ -140,7 +139,21 @@ class SiteAggregator:
         except (TypeError, ValueError):
             remote_port_value = None
         if proxy_type in {"http", "https"}:
-            if not (url.startswith("http://") or url.startswith("https://")):
+            parsed = urlsplit(url)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                return None
+            server_addr = parsed.hostname.strip()
+            if not server_addr:
+                return None
+            try:
+                parsed_port = parsed.port
+            except ValueError:
+                return None
+            if parsed_port is None:
+                remote_port_value = 443 if parsed.scheme == "https" else 80
+            else:
+                remote_port_value = int(parsed_port)
+            if remote_port_value <= 0:
                 return None
         else:
             if not server_addr or remote_port_value is None:
@@ -170,9 +183,7 @@ class SiteAggregator:
         async def worker(row: dict[str, object]) -> dict[str, object]:
             async with sem:
                 probe_type = str(row.get("proxy_type", ""))
-                if probe_type in {"http", "https"}:
-                    result = await self._probe_http(str(row["url"]))
-                elif probe_type == "tcp":
+                if probe_type in {"http", "https", "tcp"}:
                     host = str(row.get("server_addr") or "")
                     port = row.get("remote_port")
                     result = await self._probe_tcp(host, int(port) if isinstance(port, int) else 0)
@@ -188,42 +199,6 @@ class SiteAggregator:
 
         tasks = [asyncio.create_task(worker(dict(item))) for item in items]
         return await asyncio.gather(*tasks)
-
-    async def _probe_http(self, url: str) -> _ProbeResult:
-        def _request(method: str) -> tuple[int, int]:
-            start = time.perf_counter()
-            req = urllib.request.Request(url, method=method)
-            with urllib.request.urlopen(req, timeout=self._timeout_sec) as resp:
-                status = int(resp.getcode())
-            latency = int((time.perf_counter() - start) * 1000)
-            return status, max(1, latency)
-
-        try:
-            status, latency = await asyncio.to_thread(_request, "HEAD")
-            if 200 <= status < 400:
-                return _ProbeResult(ok=True, status=status, latency_ms=latency, error=None)
-        except Exception:
-            status = None
-
-        try:
-            status_get, latency_get = await asyncio.to_thread(_request, "GET")
-            if 200 <= status_get < 400:
-                return _ProbeResult(ok=True, status=status_get, latency_ms=latency_get, error=None)
-            return _ProbeResult(
-                ok=False,
-                status=status_get,
-                latency_ms=latency_get,
-                error=f"http status {status_get}",
-            )
-        except urllib.error.HTTPError as exc:
-            return _ProbeResult(
-                ok=False,
-                status=int(exc.code),
-                latency_ms=None,
-                error=f"http status {exc.code}",
-            )
-        except Exception as exc:
-            return _ProbeResult(ok=False, status=None, latency_ms=None, error=str(exc))
 
     async def _probe_tcp(self, host: str, port: int) -> _ProbeResult:
         if not host or port <= 0:

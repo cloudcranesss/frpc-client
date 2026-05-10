@@ -53,7 +53,7 @@ function renderSites() {
       </div>
       <a class="jump-link-url" href="${escapeHtml(item.url || "#")}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url || "-")}</a>
       <div class="site-card-meta">
-        <span>状态码：${item.http_status ?? "-"}</span>
+        <span>探活状态：${item.probe_ok ? "连通" : "失败"}</span>
         <span>延迟：${item.latency_ms ?? "-"} ms</span>
         <span>检查时间：${fmtTs(item.last_checked_at)}</span>
       </div>
