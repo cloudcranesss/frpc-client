@@ -147,6 +147,53 @@
           </button>
         </section>
 
+        <section class="panel sidebar reveal">
+          <div class="panel-head">
+            <h2>批量操作</h2>
+            <span id="batch_selected_count" class="jump-count">0</span>
+          </div>
+          <div class="actions three">
+            <button id="batch_select_all_btn" class="btn small secondary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-check"></use></svg>
+              <span class="btn-label">全选</span>
+            </button>
+            <button id="batch_invert_btn" class="btn small">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
+              <span class="btn-label">反选</span>
+            </button>
+            <button id="batch_clear_btn" class="btn small ghost">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-close"></use></svg>
+              <span class="btn-label">清空</span>
+            </button>
+          </div>
+          <div id="batch_client_list" class="batch-client-list"></div>
+          <div class="field checkbox-field">
+            <input id="batch_force_start" type="checkbox" />
+            <label for="batch_force_start">强制启动（跳过预检）</label>
+          </div>
+          <div class="field checkbox-field">
+            <input id="batch_skip_failed" type="checkbox" checked />
+            <label for="batch_skip_failed">预检失败自动跳过</label>
+          </div>
+          <div class="actions three">
+            <button id="batch_preflight_btn" class="btn secondary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-check"></use></svg>
+              <span class="btn-label">批量预检</span>
+            </button>
+            <button id="batch_start_btn" class="btn primary">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-play"></use></svg>
+              <span class="btn-label">批量启动</span>
+            </button>
+            <button id="batch_stop_btn" class="btn danger">
+              <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-stop"></use></svg>
+              <span class="btn-label">批量停止</span>
+            </button>
+          </div>
+          <p id="batch_hint" class="hint info"></p>
+          <p id="batch_result_summary" class="hint info"></p>
+          <div id="batch_result_list" class="batch-result-list hidden"></div>
+        </section>
+
         <section class="panel reveal">
           <div class="jump-header">
             <span>网址跳转</span>

@@ -8,6 +8,7 @@ from pathlib import Path
 import platform
 import shutil
 import time
+from typing import Awaitable, Callable
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +45,9 @@ from .schemas import (
     AutoFrpcPathResponse,
     AuthProfileResponse,
     AuthStatusResponse,
+    BatchActionItem,
+    BatchActionPayload,
+    BatchActionResponse,
     ChangePasswordPayload,
     ClientCreatePayload,
     ClientListItem,
@@ -69,6 +73,10 @@ DATA_DIR = BASE_DIR / "data"
 WEB_DIR = BASE_DIR / "web"
 APP_VERSION = "0.3.0"
 ASSET_VERSION = os.getenv("FRP_PANEL_ASSET_VERSION", APP_VERSION).strip() or APP_VERSION
+try:
+    BATCH_CONCURRENCY = max(1, min(8, int(os.getenv("FRP_PANEL_BATCH_CONCURRENCY", "6"))))
+except ValueError:
+    BATCH_CONCURRENCY = 6
 
 config_store = ConfigStore(DATA_DIR)
 alert_manager = AlertManager(config_store)
@@ -384,6 +392,178 @@ async def _client_preflight(client_id: str) -> dict[str, object]:
         run_args=client.run_args,
     )
     return payload
+
+
+def _normalize_batch_ids(client_ids: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in client_ids:
+        client_id = str(raw or "").strip()
+        if not client_id or client_id in seen:
+            continue
+        seen.add(client_id)
+        normalized.append(client_id)
+    return normalized
+
+
+async def _split_batch_ids(client_ids: list[str]) -> tuple[list[str], list[str]]:
+    state = await config_store.load_state()
+    known = {item.id for item in state.clients}
+    valid: list[str] = []
+    missing: list[str] = []
+    for client_id in _normalize_batch_ids(client_ids):
+        if client_id in known:
+            valid.append(client_id)
+        else:
+            missing.append(client_id)
+    return valid, missing
+
+
+def _build_batch_response(items: list[BatchActionItem]) -> BatchActionResponse:
+    success = sum(1 for item in items if item.ok)
+    return BatchActionResponse(
+        total=len(items),
+        success=success,
+        failed=len(items) - success,
+        items=items,
+    )
+
+
+async def _run_batch(
+    client_ids: list[str],
+    worker: Callable[[str], Awaitable[BatchActionItem]],
+) -> list[BatchActionItem]:
+    semaphore = asyncio.Semaphore(BATCH_CONCURRENCY)
+    results: list[BatchActionItem | None] = [None] * len(client_ids)
+
+    async def run_one(index: int, client_id: str) -> None:
+        async with semaphore:
+            results[index] = await worker(client_id)
+
+    await asyncio.gather(*(run_one(index, client_id) for index, client_id in enumerate(client_ids)))
+    return [item for item in results if item is not None]
+
+
+async def _batch_preflight_item(client_id: str) -> BatchActionItem:
+    try:
+        payload = await _client_preflight(client_id)
+        ok = bool(payload.get("ok"))
+        if not ok:
+            await config_store.append_runtime_event(
+                client_id=client_id,
+                event_type="preflight_failed",
+                message="Preflight checks failed.",
+                payload=payload,
+            )
+        await _audit(
+            "preflight_client",
+            client_id,
+            {
+                "ok": ok,
+                "errors": len(payload.get("errors") or []),
+                "warnings": len(payload.get("warnings") or []),
+                "batch": True,
+            },
+        )
+        return BatchActionItem(
+            client_id=client_id,
+            ok=ok,
+            message="预检通过" if ok else "预检未通过",
+            detail=payload,
+        )
+    except HTTPException as exc:
+        return BatchActionItem(
+            client_id=client_id,
+            ok=False,
+            message="预检失败",
+            detail=exc.detail if isinstance(exc.detail, (dict, list, str)) else str(exc.detail),
+        )
+    except Exception as exc:
+        return BatchActionItem(client_id=client_id, ok=False, message="预检失败", detail=str(exc))
+
+
+async def _batch_start_item(
+    client_id: str,
+    *,
+    force: bool,
+    skip_failed_preflight: bool,
+) -> BatchActionItem:
+    try:
+        preflight_failed = False
+        preflight_payload: dict[str, object] | None = None
+        started_forcefully = force
+
+        if not force:
+            preflight_payload = await _client_preflight(client_id)
+            if not bool(preflight_payload.get("ok")):
+                preflight_failed = True
+                await config_store.append_runtime_event(
+                    client_id=client_id,
+                    event_type="preflight_failed",
+                    message="Preflight checks failed.",
+                    payload=preflight_payload,
+                )
+                if skip_failed_preflight:
+                    await _audit(
+                        "start_client",
+                        client_id,
+                        {"force": False, "batch": True, "skipped": True, "reason": "preflight_failed"},
+                    )
+                    return BatchActionItem(
+                        client_id=client_id,
+                        ok=False,
+                        message="预检未通过，已跳过启动",
+                        detail=preflight_payload,
+                    )
+                started_forcefully = True
+
+        if started_forcefully:
+            await config_store.append_runtime_event(
+                client_id=client_id,
+                event_type="preflight_forced",
+                message="Start requested with force=true, preflight skipped.",
+                payload={"force": True, "batch": True},
+            )
+
+        cfg = await _resolve_start_config(client_id)
+        status_payload = await frpc_manager.start(
+            client_id,
+            cfg,
+            config_store.frpc_config_file(client_id, cfg.config_text),
+        )
+        await _audit("start_client", client_id, {"force": started_forcefully, "batch": True})
+        detail: dict[str, object] = {"status": status_payload}
+        if preflight_payload:
+            detail["preflight"] = preflight_payload
+        message = "已启动" if not preflight_failed else "预检失败后已强制启动"
+        return BatchActionItem(client_id=client_id, ok=True, message=message, detail=detail)
+    except HTTPException as exc:
+        return BatchActionItem(
+            client_id=client_id,
+            ok=False,
+            message="启动失败",
+            detail=exc.detail if isinstance(exc.detail, (dict, list, str)) else str(exc.detail),
+        )
+    except Exception as exc:
+        return BatchActionItem(client_id=client_id, ok=False, message="启动失败", detail=str(exc))
+
+
+async def _batch_stop_item(client_id: str) -> BatchActionItem:
+    try:
+        status_before = frpc_manager.status(client_id)
+        status_payload = await frpc_manager.stop(client_id)
+        await _audit("stop_client", client_id, {"batch": True})
+        message = "已停止" if bool(status_before.get("running")) else "客户端未运行，无需停止"
+        return BatchActionItem(client_id=client_id, ok=True, message=message, detail=status_payload)
+    except HTTPException as exc:
+        return BatchActionItem(
+            client_id=client_id,
+            ok=False,
+            message="停止失败",
+            detail=exc.detail if isinstance(exc.detail, (dict, list, str)) else str(exc.detail),
+        )
+    except Exception as exc:
+        return BatchActionItem(client_id=client_id, ok=False, message="停止失败", detail=str(exc))
 
 
 async def _auto_start_clients_on_boot() -> None:
@@ -956,6 +1136,60 @@ async def client_preflight(client_id: str) -> PreflightResponse:
         },
     )
     return PreflightResponse(**payload)
+
+
+@app.post("/api/clients/preflight-batch", response_model=BatchActionResponse)
+async def clients_preflight_batch(payload: BatchActionPayload) -> BatchActionResponse:
+    valid_ids, missing_ids = await _split_batch_ids(payload.client_ids)
+    if not valid_ids and not missing_ids:
+        raise HTTPException(status_code=400, detail="client_ids 不能为空。")
+
+    items: list[BatchActionItem] = [
+        BatchActionItem(client_id=client_id, ok=False, message="客户端不存在", detail="client not found")
+        for client_id in missing_ids
+    ]
+    if valid_ids:
+        items.extend(await _run_batch(valid_ids, _batch_preflight_item))
+    return _build_batch_response(items)
+
+
+@app.post("/api/clients/start-batch", response_model=BatchActionResponse)
+async def clients_start_batch(payload: BatchActionPayload) -> BatchActionResponse:
+    await _ensure_writable_mode()
+    valid_ids, missing_ids = await _split_batch_ids(payload.client_ids)
+    if not valid_ids and not missing_ids:
+        raise HTTPException(status_code=400, detail="client_ids 不能为空。")
+
+    items: list[BatchActionItem] = [
+        BatchActionItem(client_id=client_id, ok=False, message="客户端不存在", detail="client not found")
+        for client_id in missing_ids
+    ]
+    if valid_ids:
+        async def worker(client_id: str) -> BatchActionItem:
+            return await _batch_start_item(
+                client_id,
+                force=bool(payload.force),
+                skip_failed_preflight=bool(payload.skip_failed_preflight),
+            )
+
+        items.extend(await _run_batch(valid_ids, worker))
+    return _build_batch_response(items)
+
+
+@app.post("/api/clients/stop-batch", response_model=BatchActionResponse)
+async def clients_stop_batch(payload: BatchActionPayload) -> BatchActionResponse:
+    await _ensure_writable_mode()
+    valid_ids, missing_ids = await _split_batch_ids(payload.client_ids)
+    if not valid_ids and not missing_ids:
+        raise HTTPException(status_code=400, detail="client_ids 不能为空。")
+
+    items: list[BatchActionItem] = [
+        BatchActionItem(client_id=client_id, ok=False, message="客户端不存在", detail="client not found")
+        for client_id in missing_ids
+    ]
+    if valid_ids:
+        items.extend(await _run_batch(valid_ids, _batch_stop_item))
+    return _build_batch_response(items)
 
 
 @app.get("/api/clients/{client_id}/stream")

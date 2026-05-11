@@ -181,6 +181,27 @@ class PreflightResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
+
+class BatchActionPayload(BaseModel):
+    client_ids: list[str] = Field(default_factory=list)
+    force: bool = False
+    skip_failed_preflight: bool = True
+
+
+class BatchActionItem(BaseModel):
+    client_id: str
+    ok: bool
+    message: str
+    detail: dict[str, object] | list[object] | str | None = None
+
+
+class BatchActionResponse(BaseModel):
+    total: int
+    success: int
+    failed: int
+    items: list[BatchActionItem] = Field(default_factory=list)
+
+
 class ImportPreviewResponse(BaseModel):
     schema_version: int
     import_client_count: int

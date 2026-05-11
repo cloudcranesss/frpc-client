@@ -10,6 +10,9 @@ const els = {
   sitesSummary: document.querySelector("#sites_summary"),
   sitesList: document.querySelector("#sites_list"),
   sitesHint: document.querySelector("#sites_hint"),
+  sitesRegionFilter: document.querySelector("#sites_region_filter"),
+  sitesClientFilter: document.querySelector("#sites_client_filter"),
+  sitesProxyFilter: document.querySelector("#sites_proxy_filter"),
 };
 
 const state = {
@@ -18,6 +21,9 @@ const state = {
   reconnectDelaySec: 1,
   reconnectTimer: null,
   streamToken: 0,
+  regionFilter: "",
+  clientKeyword: "",
+  proxyKeyword: "",
 };
 
 function setHint(text, level = "info") {
@@ -75,22 +81,54 @@ function groupSites(rows) {
   });
 }
 
+function updateRegionFilterOptions() {
+  if (!els.sitesRegionFilter) return;
+  const labels = [...new Set(state.items.map((item) => regionLabel(item)))].sort((a, b) => {
+    if (a === UNKNOWN_REGION && b !== UNKNOWN_REGION) return 1;
+    if (a !== UNKNOWN_REGION && b === UNKNOWN_REGION) return -1;
+    return a.localeCompare(b, "zh-CN");
+  });
+  const current = state.regionFilter;
+  els.sitesRegionFilter.innerHTML = '<option value="">全部地区</option>';
+  for (const label of labels) {
+    const option = document.createElement("option");
+    option.value = label;
+    option.textContent = label;
+    option.selected = label === current;
+    els.sitesRegionFilter.appendChild(option);
+  }
+}
+
+function filteredSites() {
+  const region = state.regionFilter.trim();
+  const clientKw = state.clientKeyword.trim().toLowerCase();
+  const proxyKw = state.proxyKeyword.trim().toLowerCase();
+  return state.items.filter((item) => {
+    if (region && regionLabel(item) !== region) return false;
+    const clientName = String(item.client_name || item.client_id || "").toLowerCase();
+    const proxyName = String(item.proxy_name || "").toLowerCase();
+    if (clientKw && !clientName.includes(clientKw)) return false;
+    if (proxyKw && !proxyName.includes(proxyKw)) return false;
+    return true;
+  });
+}
+
 function renderSites() {
-  const rows = state.items || [];
+  const visibleRows = filteredSites();
   if (els.sitesSummary) {
-    els.sitesSummary.textContent = `当前可访问站点：${rows.length} 个`;
+    els.sitesSummary.textContent = `当前可访问站点：${visibleRows.length} / ${state.items.length} 个`;
   }
   if (!els.sitesList) return;
   els.sitesList.innerHTML = "";
-  if (rows.length === 0) {
+  if (visibleRows.length === 0) {
     const empty = document.createElement("div");
     empty.className = "jump-empty";
-    empty.textContent = "暂无可访问站点。";
+    empty.textContent = "暂无符合筛选条件的站点。";
     els.sitesList.appendChild(empty);
     return;
   }
 
-  const groups = groupSites(rows);
+  const groups = groupSites(visibleRows);
   for (const group of groups) {
     const section = document.createElement("section");
     section.className = "sites-region-group";
@@ -137,6 +175,7 @@ function renderSites() {
 async function loadSnapshot() {
   const payload = await request("/api/sites/successful");
   state.items = payload.items || [];
+  updateRegionFilterOptions();
   renderSites();
 }
 
@@ -164,12 +203,14 @@ function connectStream() {
   source.addEventListener("snapshot", (raw) => {
     const payload = JSON.parse(raw.data || "{}");
     state.items = payload.items || [];
+    updateRegionFilterOptions();
     renderSites();
   });
 
   source.addEventListener("update", (raw) => {
     const payload = JSON.parse(raw.data || "{}");
     state.items = payload.items || [];
+    updateRegionFilterOptions();
     renderSites();
   });
 
@@ -193,6 +234,18 @@ function bindEvents() {
     } catch (error) {
       setHint(`刷新失败: ${error.message}`, "error");
     }
+  });
+  els.sitesRegionFilter?.addEventListener("change", () => {
+    state.regionFilter = String(els.sitesRegionFilter?.value || "");
+    renderSites();
+  });
+  els.sitesClientFilter?.addEventListener("input", () => {
+    state.clientKeyword = String(els.sitesClientFilter?.value || "");
+    renderSites();
+  });
+  els.sitesProxyFilter?.addEventListener("input", () => {
+    state.proxyKeyword = String(els.sitesProxyFilter?.value || "");
+    renderSites();
   });
 }
 

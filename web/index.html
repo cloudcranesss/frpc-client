@@ -41,6 +41,22 @@
           </button>
         </div>
         <p class="hint info">展示端口探活成功的站点（地区由 ip.sb 在线识别，探活统一按 TCP 连通性判定）。</p>
+        <div class="sites-filters">
+          <div class="field">
+            <label for="sites_region_filter">地区筛选</label>
+            <select id="sites_region_filter">
+              <option value="">全部地区</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sites_client_filter">客户端关键字</label>
+            <input id="sites_client_filter" placeholder="输入客户端名称" />
+          </div>
+          <div class="field">
+            <label for="sites_proxy_filter">代理关键字</label>
+            <input id="sites_proxy_filter" placeholder="输入代理名称" />
+          </div>
+        </div>
         <div id="sites_summary" class="sites-summary">加载中...</div>
         <div id="sites_list" class="sites-list">
           <div class="jump-empty">正在获取站点数据...</div>

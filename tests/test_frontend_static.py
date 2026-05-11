@@ -51,6 +51,10 @@ def test_console_contains_collapsed_logs_and_preflight_panel():
     assert 'id="logs" class="logs hidden"' in text
     assert 'id="preflight_panel"' in text
     assert 'id="preflight_force_btn"' in text
+    assert 'id="batch_client_list"' in text
+    assert 'id="batch_preflight_btn"' in text
+    assert 'id="batch_start_btn"' in text
+    assert 'id="batch_stop_btn"' in text
 
 
 def test_home_page_contains_successful_sites_block():
@@ -58,6 +62,9 @@ def test_home_page_contains_successful_sites_block():
     assert 'id="sites_list"' in text
     assert 'id="sites_refresh_btn"' in text
     assert 'id="sites_summary"' in text
+    assert 'id="sites_region_filter"' in text
+    assert 'id="sites_client_filter"' in text
+    assert 'id="sites_proxy_filter"' in text
     assert 'src="/web/sites.js?v=__ASSET_VERSION__"' in text
 
 
@@ -152,6 +159,15 @@ def test_console_supports_clear_logs_action():
     assert "logsClearBtn" in dashboard
 
 
+def test_console_supports_batch_actions():
+    dashboard = _read("dashboard.js")
+    assert "/api/clients/preflight-batch" in dashboard
+    assert "/api/clients/start-batch" in dashboard
+    assert "/api/clients/stop-batch" in dashboard
+    assert "batchSelectedIds" in dashboard
+    assert "batch_result_list" in _read("console.html")
+
+
 def test_home_page_uses_sites_api_and_stream():
     text = _read("sites.js")
     assert "/api/sites/successful" in text
@@ -159,3 +175,6 @@ def test_home_page_uses_sites_api_and_stream():
     assert 'target="_blank"' in text
     assert "region_label" in text
     assert "sites-region-group" in text
+    assert "sites_region_filter" in text
+    assert "sites_client_filter" in text
+    assert "sites_proxy_filter" in text

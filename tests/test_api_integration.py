@@ -259,6 +259,136 @@ def test_preflight_then_force_start_flow(client: TestClient, monkeypatch: pytest
     assert "preflight_forced" in event_types
 
 
+def test_batch_preflight_mixed_results(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    first_id = _first_client_id(client)
+    created = client.post("/api/clients", json={"name": "batch-2"})
+    assert created.status_code == 200
+    second_id = created.json()["active_client_id"]
+
+    async def fake_preflight(cid: str):
+        if cid == first_id:
+            return {"ok": False, "errors": ["first error"], "warnings": []}
+        return {"ok": True, "errors": [], "warnings": ["warn only"]}
+
+    monkeypatch.setattr(main_mod, "_client_preflight", fake_preflight)
+    resp = client.post(
+        "/api/clients/preflight-batch",
+        json={"client_ids": [first_id, second_id, "missing-id"]},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["total"] == 3
+    assert payload["success"] == 1
+    assert payload["failed"] == 2
+    by_id = {item["client_id"]: item for item in payload["items"]}
+    assert by_id[first_id]["ok"] is False
+    assert by_id[second_id]["ok"] is True
+    assert by_id["missing-id"]["ok"] is False
+
+
+def test_batch_start_preflight_gate_and_force(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    first_id = _first_client_id(client)
+    created = client.post("/api/clients", json={"name": "batch-start"})
+    assert created.status_code == 200
+    second_id = created.json()["active_client_id"]
+
+    async def fake_preflight(cid: str):
+        if cid == first_id:
+            return {"ok": False, "errors": ["blocked"], "warnings": []}
+        return {"ok": True, "errors": [], "warnings": []}
+
+    async def fake_resolve(cid: str):
+        state = await main_mod.config_store.load_state()
+        return next(item for item in state.clients if item.id == cid)
+
+    calls: list[str] = []
+
+    async def fake_start(cid: str, cfg, config_path):
+        _ = (cfg, config_path)
+        calls.append(cid)
+        return {
+            "running": True,
+            "pid": 1234,
+            "started_at": 1.0,
+            "uptime_sec": 0,
+            "last_exit_code": None,
+            "restart_count": 0,
+            "last_error": None,
+        }
+
+    monkeypatch.setattr(main_mod, "_client_preflight", fake_preflight)
+    monkeypatch.setattr(main_mod, "_resolve_start_config", fake_resolve)
+    monkeypatch.setattr(main_mod.frpc_manager, "start", fake_start)
+
+    resp = client.post(
+        "/api/clients/start-batch",
+        json={"client_ids": [first_id, second_id], "force": False, "skip_failed_preflight": True},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["success"] == 1
+    assert payload["failed"] == 1
+    assert calls == [second_id]
+
+    calls.clear()
+    force_resp = client.post(
+        "/api/clients/start-batch",
+        json={"client_ids": [first_id, second_id], "force": True, "skip_failed_preflight": True},
+    )
+    assert force_resp.status_code == 200
+    force_payload = force_resp.json()
+    assert force_payload["success"] == 2
+    assert set(calls) == {first_id, second_id}
+
+
+def test_batch_stop_running_and_idle(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    first_id = _first_client_id(client)
+    created = client.post("/api/clients", json={"name": "batch-stop"})
+    assert created.status_code == 200
+    second_id = created.json()["active_client_id"]
+
+    def fake_status(cid: str):
+        if cid == first_id:
+            return {
+                "running": True,
+                "pid": 2200,
+                "started_at": 1.0,
+                "uptime_sec": 10,
+                "last_exit_code": None,
+                "restart_count": 0,
+                "last_error": None,
+            }
+        return {
+            "running": False,
+            "pid": None,
+            "started_at": None,
+            "uptime_sec": 0,
+            "last_exit_code": 0,
+            "restart_count": 0,
+            "last_error": None,
+        }
+
+    async def fake_stop(cid: str):
+        payload = fake_status(cid)
+        payload["running"] = False
+        payload["pid"] = None
+        return payload
+
+    monkeypatch.setattr(main_mod.frpc_manager, "status", fake_status)
+    monkeypatch.setattr(main_mod.frpc_manager, "stop", fake_stop)
+
+    resp = client.post(
+        "/api/clients/stop-batch",
+        json={"client_ids": [first_id, second_id]},
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["success"] == 2
+    by_id = {item["client_id"]: item for item in payload["items"]}
+    assert "已停止" in by_id[first_id]["message"]
+    assert "无需停止" in by_id[second_id]["message"]
+
+
 def test_jump_links_follow_client_config(client: TestClient):
     client_id = _first_client_id(client)
     cfg_resp = client.get(f"/api/clients/{client_id}/config")

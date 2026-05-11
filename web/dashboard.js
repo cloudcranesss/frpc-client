@@ -34,6 +34,19 @@ const els = {
   preflightWarningsWrap: document.querySelector("#preflight_warnings_wrap"),
   preflightWarnings: document.querySelector("#preflight_warnings"),
   preflightForceBtn: document.querySelector("#preflight_force_btn"),
+  batchClientList: document.querySelector("#batch_client_list"),
+  batchSelectedCount: document.querySelector("#batch_selected_count"),
+  batchSelectAllBtn: document.querySelector("#batch_select_all_btn"),
+  batchInvertBtn: document.querySelector("#batch_invert_btn"),
+  batchClearBtn: document.querySelector("#batch_clear_btn"),
+  batchForceStart: document.querySelector("#batch_force_start"),
+  batchSkipFailed: document.querySelector("#batch_skip_failed"),
+  batchPreflightBtn: document.querySelector("#batch_preflight_btn"),
+  batchStartBtn: document.querySelector("#batch_start_btn"),
+  batchStopBtn: document.querySelector("#batch_stop_btn"),
+  batchHint: document.querySelector("#batch_hint"),
+  batchResultSummary: document.querySelector("#batch_result_summary"),
+  batchResultList: document.querySelector("#batch_result_list"),
 };
 
 const state = {
@@ -44,6 +57,7 @@ const state = {
   reconnectDelaySec: 1,
   reconnectTimer: null,
   streamToken: 0,
+  batchSelectedIds: new Set(),
 };
 
 function setHint(text, level = "info") {
@@ -51,6 +65,20 @@ function setHint(text, level = "info") {
   els.hint.textContent = text;
   els.hint.classList.remove("info", "warn", "error");
   els.hint.classList.add(level);
+}
+
+function setBatchHint(text, level = "info") {
+  if (!els.batchHint) return;
+  els.batchHint.textContent = text;
+  els.batchHint.classList.remove("info", "warn", "error");
+  els.batchHint.classList.add(level);
+}
+
+function setBatchSummary(text, level = "info") {
+  if (!els.batchResultSummary) return;
+  els.batchResultSummary.textContent = text;
+  els.batchResultSummary.classList.remove("info", "warn", "error");
+  els.batchResultSummary.classList.add(level);
 }
 
 function setStatusMeta(text, level = "info") {
@@ -149,12 +177,116 @@ function renderClients() {
   }
 }
 
+function syncBatchSelectionWithClients() {
+  const validIds = new Set(state.clients.map((item) => item.id));
+  for (const clientId of [...state.batchSelectedIds]) {
+    if (!validIds.has(clientId)) state.batchSelectedIds.delete(clientId);
+  }
+}
+
+function updateBatchSelectedCount() {
+  if (!els.batchSelectedCount) return;
+  els.batchSelectedCount.textContent = String(state.batchSelectedIds.size);
+}
+
+function renderBatchClientList() {
+  if (!els.batchClientList) return;
+  els.batchClientList.innerHTML = "";
+  if (!state.clients.length) {
+    const row = document.createElement("div");
+    row.className = "jump-empty";
+    row.textContent = "暂无客户端可批量操作。";
+    els.batchClientList.appendChild(row);
+    updateBatchSelectedCount();
+    return;
+  }
+
+  for (const client of state.clients) {
+    const row = document.createElement("label");
+    row.className = "batch-client-row";
+    row.innerHTML = `
+      <input type="checkbox" data-client-id="${escapeHtml(client.id)}" ${state.batchSelectedIds.has(client.id) ? "checked" : ""} />
+      <span class="batch-client-name">${escapeHtml(client.name)}</span>
+      <span class="dot ${client.running ? "online" : "offline"}"></span>
+    `;
+    els.batchClientList.appendChild(row);
+  }
+  updateBatchSelectedCount();
+}
+
+function formatBatchDetail(detail) {
+  if (detail === undefined || detail === null) return "";
+  if (typeof detail === "string") return detail;
+  try {
+    return JSON.stringify(detail, null, 2);
+  } catch {
+    return String(detail);
+  }
+}
+
+function renderBatchResult(payload) {
+  const total = Number(payload.total || 0);
+  const success = Number(payload.success || 0);
+  const failed = Number(payload.failed || 0);
+  setBatchSummary(`总计 ${total}，成功 ${success}，失败 ${failed}。`, failed > 0 ? "warn" : "info");
+
+  if (!els.batchResultList) return;
+  els.batchResultList.innerHTML = "";
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) {
+    els.batchResultList.classList.add("hidden");
+    return;
+  }
+  els.batchResultList.classList.remove("hidden");
+
+  for (const item of items) {
+    const detailText = formatBatchDetail(item.detail);
+    const block = document.createElement("div");
+    block.className = `batch-result-item ${item.ok ? "ok" : "fail"}`;
+    block.innerHTML = `
+      <div class="batch-result-main">
+        <span class="batch-result-client">${escapeHtml(item.client_id || "-")}</span>
+        <span class="batch-result-msg">${escapeHtml(item.message || (item.ok ? "成功" : "失败"))}</span>
+      </div>
+      ${detailText ? `<details><summary>详情</summary><pre>${escapeHtml(detailText)}</pre></details>` : ""}
+    `;
+    els.batchResultList.appendChild(block);
+  }
+}
+
+function selectedClientIds() {
+  return [...state.batchSelectedIds];
+}
+
+function selectedClientNames(clientIds) {
+  const clientMap = new Map(state.clients.map((item) => [item.id, item.name]));
+  return clientIds.map((clientId) => clientMap.get(clientId) || clientId);
+}
+
+function ensureBatchSelection() {
+  const ids = selectedClientIds();
+  if (!ids.length) {
+    setBatchHint("请先选择至少一个客户端。", "warn");
+    return null;
+  }
+  return ids;
+}
+
+function confirmBatchAction(actionName, ids) {
+  const names = selectedClientNames(ids);
+  const preview = names.slice(0, 6).join("、");
+  const suffix = names.length > 6 ? ` 等 ${names.length} 个` : `（共 ${names.length} 个）`;
+  return window.confirm(`确认${actionName}以下客户端？\n${preview}${suffix}`);
+}
+
 async function loadClients() {
   const payload = await request("/api/clients");
   state.clients = payload.clients || [];
   const known = state.clients.some((item) => item.id === state.activeClientId);
   state.activeClientId = known ? state.activeClientId : payload.active_client_id || state.clients[0]?.id || "";
   renderClients();
+  syncBatchSelectionWithClients();
+  renderBatchClientList();
 }
 
 async function loadActiveConfig() {
@@ -366,6 +498,40 @@ async function autoDetectFrpcPath() {
   }
 }
 
+async function runBatchPreflight() {
+  const ids = ensureBatchSelection();
+  if (!ids) return;
+  const payload = await request("/api/clients/preflight-batch", "POST", { client_ids: ids });
+  renderBatchResult(payload);
+  setBatchHint("批量预检已完成。", payload.failed > 0 ? "warn" : "info");
+}
+
+async function runBatchStart() {
+  const ids = ensureBatchSelection();
+  if (!ids) return;
+  if (!confirmBatchAction("批量启动", ids)) return;
+  const force = !!els.batchForceStart?.checked;
+  const skipFailed = !!els.batchSkipFailed?.checked;
+  const payload = await request("/api/clients/start-batch", "POST", {
+    client_ids: ids,
+    force,
+    skip_failed_preflight: skipFailed,
+  });
+  renderBatchResult(payload);
+  setBatchHint("批量启动已执行。", payload.failed > 0 ? "warn" : "info");
+  await Promise.all([loadClients(), loadStatusAndLogs(), loadJumpLinks()]);
+}
+
+async function runBatchStop() {
+  const ids = ensureBatchSelection();
+  if (!ids) return;
+  if (!confirmBatchAction("批量停止", ids)) return;
+  const payload = await request("/api/clients/stop-batch", "POST", { client_ids: ids });
+  renderBatchResult(payload);
+  setBatchHint("批量停止已执行。", payload.failed > 0 ? "warn" : "info");
+  await Promise.all([loadClients(), loadStatusAndLogs(), loadJumpLinks()]);
+}
+
 function bindEvents() {
   els.logoutBtn?.addEventListener("click", () => logout());
 
@@ -394,6 +560,46 @@ function bindEvents() {
     }
   });
 
+  els.batchClientList?.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.type !== "checkbox") return;
+    const clientId = target.dataset.clientId || "";
+    if (!clientId) return;
+    if (target.checked) {
+      state.batchSelectedIds.add(clientId);
+    } else {
+      state.batchSelectedIds.delete(clientId);
+    }
+    updateBatchSelectedCount();
+  });
+
+  els.batchSelectAllBtn?.addEventListener("click", () => {
+    for (const client of state.clients) state.batchSelectedIds.add(client.id);
+    renderBatchClientList();
+  });
+  els.batchInvertBtn?.addEventListener("click", () => {
+    const next = new Set();
+    for (const client of state.clients) {
+      if (!state.batchSelectedIds.has(client.id)) next.add(client.id);
+    }
+    state.batchSelectedIds = next;
+    renderBatchClientList();
+  });
+  els.batchClearBtn?.addEventListener("click", () => {
+    state.batchSelectedIds.clear();
+    renderBatchClientList();
+  });
+  els.batchPreflightBtn?.addEventListener("click", () => {
+    runBatchPreflight().catch((error) => setBatchHint(`批量预检失败: ${error.message}`, "error"));
+  });
+  els.batchStartBtn?.addEventListener("click", () => {
+    runBatchStart().catch((error) => setBatchHint(`批量启动失败: ${error.message}`, "error"));
+  });
+  els.batchStopBtn?.addEventListener("click", () => {
+    runBatchStop().catch((error) => setBatchHint(`批量停止失败: ${error.message}`, "error"));
+  });
+
   els.addClientBtn?.addEventListener("click", async () => {
     try {
       const payload = await request("/api/clients", "POST", { name: "" });
@@ -413,6 +619,7 @@ function bindEvents() {
     if (!ok) return;
     try {
       const payload = await request(`/api/clients/${encodeURIComponent(state.activeClientId)}`, "DELETE");
+      state.batchSelectedIds.delete(state.activeClientId);
       state.activeClientId = payload.active_client_id || payload.clients?.[0]?.id || "";
       await Promise.all([loadClients(), loadActiveConfig(), loadStatusAndLogs(), loadJumpLinks()]);
       connectStream();

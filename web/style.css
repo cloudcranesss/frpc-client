@@ -311,6 +311,10 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.actions.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -520,8 +524,102 @@ textarea {
   font-size: 12px;
 }
 
+.batch-client-list {
+  display: grid;
+  gap: 6px;
+  max-height: 200px;
+  overflow: auto;
+  margin-bottom: 8px;
+}
+
+.batch-client-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--bg-soft);
+  font-size: 13px;
+}
+
+.batch-client-row input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+}
+
+.batch-client-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-result-list {
+  display: grid;
+  gap: 8px;
+}
+
+.batch-result-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--bg-soft);
+}
+
+.batch-result-item.ok {
+  border-color: color-mix(in oklab, var(--success) 45%, var(--line));
+}
+
+.batch-result-item.fail {
+  border-color: color-mix(in oklab, var(--danger) 45%, var(--line));
+}
+
+.batch-result-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.batch-result-client {
+  font-weight: 700;
+}
+
+.batch-result-msg {
+  color: var(--muted);
+}
+
+.batch-result-item details {
+  margin-top: 6px;
+}
+
+.batch-result-item summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.batch-result-item pre {
+  margin: 6px 0 0;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  background: color-mix(in oklab, var(--card-strong) 75%, transparent);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .sites-page .panel {
   min-height: 220px;
+}
+
+.sites-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .sites-summary {
@@ -936,6 +1034,14 @@ body[data-motion="reduced"] * {
   }
 
   .two-cols {
+    grid-template-columns: 1fr;
+  }
+
+  .actions.three {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sites-filters {
     grid-template-columns: 1fr;
   }
 
