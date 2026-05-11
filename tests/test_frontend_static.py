@@ -157,3 +157,5 @@ def test_home_page_uses_sites_api_and_stream():
     assert "/api/sites/successful" in text
     assert "/api/sites/stream" in text
     assert 'target="_blank"' in text
+    assert "region_label" in text
+    assert "sites-region-group" in text

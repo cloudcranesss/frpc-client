@@ -532,6 +532,22 @@ textarea {
 
 .sites-list {
   display: grid;
+  gap: 14px;
+}
+
+.sites-region-group {
+  display: grid;
+  gap: 10px;
+}
+
+.sites-region-title {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.sites-region-list {
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
@@ -923,7 +939,7 @@ body[data-motion="reduced"] * {
     grid-template-columns: 1fr;
   }
 
-  .sites-list {
+  .sites-region-list {
     grid-template-columns: 1fr;
   }
 }

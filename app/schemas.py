@@ -112,6 +112,10 @@ class SuccessfulSiteItem(BaseModel):
     url: str
     server_addr: str | None = None
     remote_port: int | None = None
+    region_country: str | None = None
+    region_province: str | None = None
+    region_city: str | None = None
+    region_label: str | None = None
     probe_ok: bool
     http_status: int | None = None
     latency_ms: int | None = None

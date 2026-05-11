@@ -1,5 +1,7 @@
 import { escapeHtml, fmtTs, initThemePicker, logout, markActiveNav, request, requireAuth, setUserBadge } from "/web/shared.js";
 
+const UNKNOWN_REGION = "内网/未知";
+
 const els = {
   themeMode: document.querySelector("#theme_mode"),
   userBadge: document.querySelector("#user_badge"),
@@ -25,6 +27,54 @@ function setHint(text, level = "info") {
   els.sitesHint.classList.add(level);
 }
 
+function regionLabel(item) {
+  return String(item.region_label || "").trim() || UNKNOWN_REGION;
+}
+
+function formatRegion(item) {
+  const values = [item.region_country, item.region_province, item.region_city]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+  return values.length ? values.join("/") : UNKNOWN_REGION;
+}
+
+function normalizeEndpoint(item) {
+  const host = String(item.server_addr || "").trim();
+  const port = Number.parseInt(String(item.remote_port ?? ""), 10);
+  const hasEndpoint = !!host && Number.isInteger(port) && port > 0;
+  return {
+    host,
+    port: hasEndpoint ? port : null,
+    endpoint: hasEndpoint ? `${host}:${port}` : "-",
+    openUrl: hasEndpoint ? `http://${host}:${port}` : (item.url || "#"),
+  };
+}
+
+function groupSites(rows) {
+  const grouped = new Map();
+  for (const item of rows) {
+    const label = regionLabel(item);
+    if (!grouped.has(label)) grouped.set(label, []);
+    grouped.get(label).push(item);
+  }
+
+  const labels = [...grouped.keys()].sort((a, b) => {
+    if (a === UNKNOWN_REGION && b !== UNKNOWN_REGION) return 1;
+    if (a !== UNKNOWN_REGION && b === UNKNOWN_REGION) return -1;
+    return a.localeCompare(b, "zh-CN");
+  });
+
+  return labels.map((label) => {
+    const items = grouped.get(label) || [];
+    items.sort((a, b) => {
+      const left = `${a.client_name || ""}|${a.proxy_name || ""}|${a.server_addr || ""}|${a.remote_port || 0}`;
+      const right = `${b.client_name || ""}|${b.proxy_name || ""}|${b.server_addr || ""}|${b.remote_port || 0}`;
+      return left.localeCompare(right, "zh-CN");
+    });
+    return { label, items };
+  });
+}
+
 function renderSites() {
   const rows = state.items || [];
   if (els.sitesSummary) {
@@ -40,32 +90,47 @@ function renderSites() {
     return;
   }
 
-  for (const item of rows) {
-    const host = String(item.server_addr || "").trim();
-    const port = Number.parseInt(String(item.remote_port ?? ""), 10);
-    const hasEndpoint = !!host && Number.isInteger(port) && port > 0;
-    const endpoint = hasEndpoint ? `${host}:${port}` : "-";
-    const openUrl = hasEndpoint ? `http://${host}:${port}` : (item.url || "#");
+  const groups = groupSites(rows);
+  for (const group of groups) {
+    const section = document.createElement("section");
+    section.className = "sites-region-group";
 
-    const card = document.createElement("article");
-    card.className = "site-card";
-    card.innerHTML = `
-      <div class="site-card-top">
-        <strong>${escapeHtml(item.proxy_name || "-")}</strong>
-        <span class="pill online">可访问</span>
-      </div>
-      <div class="site-card-meta">
-        <span>客户端：${escapeHtml(item.client_name || item.client_id || "-")}</span>
-        <span>类型：${escapeHtml((item.proxy_type || "").toUpperCase() || "-")}</span>
-      </div>
-      <a class="jump-link-url" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(endpoint)}</a>
-      <div class="site-card-meta">
-        <span>探活状态：${item.probe_ok ? "连通" : "失败"}</span>
-        <span>延迟：${item.latency_ms ?? "-"} ms</span>
-        <span>检查时间：${fmtTs(item.last_checked_at)}</span>
-      </div>
-    `;
-    els.sitesList.appendChild(card);
+    const title = document.createElement("h3");
+    title.className = "sites-region-title";
+    title.textContent = `${group.label} (${group.items.length})`;
+    section.appendChild(title);
+
+    const groupList = document.createElement("div");
+    groupList.className = "sites-region-list";
+
+    for (const item of group.items) {
+      const { endpoint, openUrl } = normalizeEndpoint(item);
+      const card = document.createElement("article");
+      card.className = "site-card";
+      card.innerHTML = `
+        <div class="site-card-top">
+          <strong>${escapeHtml(item.proxy_name || "-")}</strong>
+          <span class="pill online">可访问</span>
+        </div>
+        <div class="site-card-meta">
+          <span>客户端：${escapeHtml(item.client_name || item.client_id || "-")}</span>
+          <span>类型：${escapeHtml((item.proxy_type || "").toUpperCase() || "-")}</span>
+        </div>
+        <div class="site-card-meta">
+          <span>地区：${escapeHtml(formatRegion(item))}</span>
+        </div>
+        <a class="jump-link-url" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(endpoint)}</a>
+        <div class="site-card-meta">
+          <span>探活状态：${item.probe_ok ? "连通" : "失败"}</span>
+          <span>延迟：${item.latency_ms ?? "-"} ms</span>
+          <span>检查时间：${fmtTs(item.last_checked_at)}</span>
+        </div>
+      `;
+      groupList.appendChild(card);
+    }
+
+    section.appendChild(groupList);
+    els.sitesList.appendChild(section);
   }
 }
 

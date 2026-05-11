@@ -34,7 +34,11 @@ async def test_refresh_keeps_only_successful_sites_with_tcp_probe():
             return _ProbeResult(ok=True, status=200, latency_ms=4, error=None)
         return _ProbeResult(ok=False, status=None, latency_ms=None, error="connection failed")
 
+    async def fake_region(_: str):
+        return {"region_country": None, "region_province": None, "region_city": None, "region_label": "内网/未知"}
+
     aggregator._probe_tcp = fake_probe_tcp  # type: ignore[method-assign]
+    aggregator._resolve_region = fake_region  # type: ignore[method-assign]
     await aggregator._refresh_once()
     rows = await aggregator.get_successful_sites()
     names = {item["proxy_name"] for item in rows}
@@ -44,6 +48,7 @@ async def test_refresh_keeps_only_successful_sites_with_tcp_probe():
     assert row["server_addr"] == "127.0.0.1"
     assert row["remote_port"] == 22022
     assert row["url"] == "http://127.0.0.1:22022"
+    assert row["region_label"] == "内网/未知"
 
 
 @pytest.mark.asyncio
@@ -69,7 +74,11 @@ async def test_only_server_addr_and_remote_port_are_used():
         seen.append((host, port))
         return _ProbeResult(ok=True, status=200, latency_ms=2, error=None)
 
+    async def fake_region(_: str):
+        return {"region_country": "中国", "region_province": "北京", "region_city": "北京", "region_label": "中国/北京/北京"}
+
     aggregator._probe_tcp = fake_probe_tcp  # type: ignore[method-assign]
+    aggregator._resolve_region = fake_region  # type: ignore[method-assign]
     await aggregator._refresh_once()
     assert ("a.test", 80) in seen
     assert ("b.test", 443) in seen
@@ -101,3 +110,51 @@ async def test_probe_tcp_invalid_and_exception_paths(monkeypatch: pytest.MonkeyP
     assert failed.ok is False
     assert failed.status is None
     assert "timeout" in str(failed.error)
+
+
+@pytest.mark.asyncio
+async def test_region_private_ip_falls_back_to_unknown():
+    async def load_clients():
+        return []
+
+    def build_links(_: ProxyClientConfig):
+        return []
+
+    aggregator = SiteAggregator(load_clients=load_clients, build_jump_links=build_links)
+
+    async def fake_resolve_ip(_: str):
+        return "192.168.1.9"
+
+    aggregator._resolve_ip_for_geo = fake_resolve_ip  # type: ignore[method-assign]
+    result = await aggregator._resolve_region("host.local")
+    assert result["region_label"] == "内网/未知"
+    assert result["region_country"] is None
+
+
+@pytest.mark.asyncio
+async def test_region_cache_hits_without_requery():
+    async def load_clients():
+        return []
+
+    def build_links(_: ProxyClientConfig):
+        return []
+
+    aggregator = SiteAggregator(load_clients=load_clients, build_jump_links=build_links)
+    aggregator._geo_cache_ttl_sec = 3600
+    calls = {"lookup": 0}
+
+    async def fake_resolve_ip(_: str):
+        return "8.8.8.8"
+
+    async def fake_lookup(_: str):
+        calls["lookup"] += 1
+        return {"country": "美国", "province": "加州", "city": "山景城"}
+
+    aggregator._resolve_ip_for_geo = fake_resolve_ip  # type: ignore[method-assign]
+    aggregator._lookup_geo_city = fake_lookup  # type: ignore[method-assign]
+
+    first = await aggregator._resolve_region("google.test")
+    second = await aggregator._resolve_region("google.test")
+    assert first["region_label"] == "美国/加州/山景城"
+    assert second["region_label"] == "美国/加州/山景城"
+    assert calls["lookup"] == 1

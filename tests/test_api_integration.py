@@ -153,6 +153,10 @@ def test_successful_sites_snapshot(client: TestClient):
             "url": "http://example.com:6000",
             "server_addr": "example.com",
             "remote_port": 6000,
+            "region_country": "美国",
+            "region_province": "加州",
+            "region_city": "山景城",
+            "region_label": "美国/加州/山景城",
             "probe_ok": True,
             "http_status": 200,
             "latency_ms": 12,
@@ -167,6 +171,7 @@ def test_successful_sites_snapshot(client: TestClient):
     assert body["items"][0]["url"] == "http://example.com:6000"
     assert body["items"][0]["server_addr"] == "example.com"
     assert body["items"][0]["remote_port"] == 6000
+    assert body["items"][0]["region_label"] == "美国/加州/山景城"
 
 
 
