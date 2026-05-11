@@ -142,11 +142,13 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-## GeoIP 地区分组（主页）
+## IP 地区分组（主页）
 
 - 主页会按 IP 地区分组展示探活成功站点（国家/省份/城市）。
-- 地区数据来自本地离线 GeoIP 库，建议使用 GeoLite2 City。
+- 地区数据来自在线 `ip.sb`（`https://api.ip.sb/geoip/{ip}`）。
 - 环境变量：
-  - `FRP_PANEL_GEOIP_DB_PATH`：GeoIP 库文件路径（默认 `/app/data/GeoLite2-City.mmdb`）。
+  - `FRP_PANEL_GEO_API_BASE`：地区查询 API 基地址（默认 `https://api.ip.sb/geoip`）。
+  - `FRP_PANEL_GEO_API_TIMEOUT_SEC`：地区查询超时秒数（默认 `2`）。
   - `FRP_PANEL_GEOIP_CACHE_TTL_SEC`：地区缓存 TTL 秒数（默认 `1800`）。
-- 当库文件缺失或不可用时，会自动降级为 `内网/未知` 分组，不影响探活与页面访问。
+- 废弃：`FRP_PANEL_GEOIP_DB_PATH`（已不再使用，设置后会在日志中提示）。
+- 当外网不可达或接口异常时，会自动降级为 `内网/未知` 分组，不影响探活与页面访问。

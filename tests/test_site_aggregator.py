@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+
 import pytest
 
 from app.config_store import ProxyClientConfig
@@ -30,6 +32,7 @@ async def test_refresh_keeps_only_successful_sites_with_tcp_probe():
 
     async def fake_probe_tcp(host: str, port: int):
         from app.site_aggregator import _ProbeResult
+
         if (host == "ok.test" and port == 80) or (host == "127.0.0.1" and port == 22022):
             return _ProbeResult(ok=True, status=200, latency_ms=4, error=None)
         return _ProbeResult(ok=False, status=None, latency_ms=None, error="connection failed")
@@ -71,6 +74,7 @@ async def test_only_server_addr_and_remote_port_are_used():
 
     async def fake_probe_tcp(host: str, port: int):
         from app.site_aggregator import _ProbeResult
+
         seen.append((host, port))
         return _ProbeResult(ok=True, status=200, latency_ms=2, error=None)
 
@@ -151,10 +155,33 @@ async def test_region_cache_hits_without_requery():
         return {"country": "美国", "province": "加州", "city": "山景城"}
 
     aggregator._resolve_ip_for_geo = fake_resolve_ip  # type: ignore[method-assign]
-    aggregator._lookup_geo_city = fake_lookup  # type: ignore[method-assign]
+    aggregator._lookup_ip_sb_region = fake_lookup  # type: ignore[method-assign]
 
     first = await aggregator._resolve_region("google.test")
     second = await aggregator._resolve_region("google.test")
     assert first["region_label"] == "美国/加州/山景城"
     assert second["region_label"] == "美国/加州/山景城"
     assert calls["lookup"] == 1
+
+
+@pytest.mark.asyncio
+async def test_region_api_failure_falls_back_to_unknown():
+    async def load_clients():
+        return []
+
+    def build_links(_: ProxyClientConfig):
+        return []
+
+    aggregator = SiteAggregator(load_clients=load_clients, build_jump_links=build_links)
+
+    async def fake_resolve_ip(_: str):
+        return str(ipaddress.ip_address("1.1.1.1"))
+
+    async def fake_lookup(_: str):
+        return None
+
+    aggregator._resolve_ip_for_geo = fake_resolve_ip  # type: ignore[method-assign]
+    aggregator._lookup_ip_sb_region = fake_lookup  # type: ignore[method-assign]
+    result = await aggregator._resolve_region("one.one.one.one")
+    assert result["region_label"] == "内网/未知"
+    assert result["region_country"] is None

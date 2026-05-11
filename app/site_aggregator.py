@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import ipaddress
 import json
 import logging
 import os
 import socket
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from .config_store import ProxyClientConfig
@@ -51,19 +51,28 @@ class SiteAggregator:
         self._subscribers: set[asyncio.Queue[dict[str, object]]] = set()
         self._last_failure_emit_at: dict[str, float] = {}
 
-        self._geo_db_path = Path(
-            os.getenv("FRP_PANEL_GEOIP_DB_PATH", "/app/data/GeoLite2-City.mmdb").strip() or "/app/data/GeoLite2-City.mmdb"
-        )
+        self._geo_api_base = os.getenv("FRP_PANEL_GEO_API_BASE", "https://api.ip.sb/geoip").strip() or "https://api.ip.sb/geoip"
+        try:
+            self._geo_api_timeout_sec = max(0.2, float(os.getenv("FRP_PANEL_GEO_API_TIMEOUT_SEC", "2")))
+        except ValueError:
+            self._geo_api_timeout_sec = 2.0
         try:
             geo_ttl = int(os.getenv("FRP_PANEL_GEOIP_CACHE_TTL_SEC", "1800"))
         except ValueError:
             geo_ttl = 1800
         self._geo_cache_ttl_sec = max(60, geo_ttl)
-        self._geo_reader: object | None = None
-        self._geo_reader_checked = False
-        self._geo_lock = asyncio.Lock()
+        try:
+            self._geo_api_concurrency = max(1, int(os.getenv("FRP_PANEL_GEO_API_CONCURRENCY", "8")))
+        except ValueError:
+            self._geo_api_concurrency = 8
+        self._geo_lookup_sem = asyncio.Semaphore(self._geo_api_concurrency)
         self._geo_cache: dict[str, tuple[float, dict[str, object]]] = {}
-        self._geo_warned = False
+        self._geo_lock = asyncio.Lock()
+        self._deprecated_geo_warned = False
+
+        deprecated_geo_db_path = os.getenv("FRP_PANEL_GEOIP_DB_PATH")
+        if deprecated_geo_db_path:
+            self._warn_deprecated_geo_db_path(deprecated_geo_db_path)
 
     async def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -81,13 +90,6 @@ class SiteAggregator:
             self._task = None
         async with self._lock:
             self._subscribers.clear()
-        reader = self._geo_reader
-        self._geo_reader = None
-        if reader is not None:
-            close = getattr(reader, "close", None)
-            if callable(close):
-                with contextlib.suppress(Exception):
-                    close()
 
     async def subscribe(self, queue: asyncio.Queue[dict[str, object]]) -> None:
         snapshot = await self.get_successful_sites()
@@ -123,7 +125,13 @@ class SiteAggregator:
 
         probed = await self._probe_many(candidates)
         successful = [item for item in probed if bool(item["probe_ok"])]
-        successful.sort(key=lambda item: (str(item.get("region_label", _UNKNOWN_REGION_LABEL)), str(item["client_name"]), str(item["proxy_name"])))
+        successful.sort(
+            key=lambda item: (
+                str(item.get("region_label", _UNKNOWN_REGION_LABEL)),
+                str(item["client_name"]),
+                str(item["proxy_name"]),
+            )
+        )
         await self._emit_probe_failures(probed)
 
         encoded = json.dumps(successful, ensure_ascii=False, sort_keys=True)
@@ -189,14 +197,16 @@ class SiteAggregator:
     async def _probe_many(self, items: list[dict[str, object]]) -> list[dict[str, object]]:
         if not items:
             return []
-        sem = asyncio.Semaphore(12)
+        probe_sem = asyncio.Semaphore(12)
 
         async def worker(row: dict[str, object]) -> dict[str, object]:
-            async with sem:
-                host = str(row.get("server_addr") or "")
-                port = row.get("remote_port")
+            host = str(row.get("server_addr") or "")
+            port = row.get("remote_port")
+
+            async with probe_sem:
                 result = await self._probe_tcp(host, int(port) if isinstance(port, int) else 0)
-                region = await self._resolve_region(host)
+            region = await self._resolve_region(host)
+
             now = time.time()
             row["probe_ok"] = result.ok
             row["http_status"] = result.status
@@ -230,29 +240,17 @@ class SiteAggregator:
             return _ProbeResult(ok=False, status=None, latency_ms=None, error=str(exc))
 
     async def _resolve_region(self, host: str) -> dict[str, object]:
-        key = host.strip().lower()
-        if not key:
-            return {"region_country": None, "region_province": None, "region_city": None, "region_label": _UNKNOWN_REGION_LABEL}
-        now = time.time()
-        async with self._geo_lock:
-            cached = self._geo_cache.get(key)
-            if cached and cached[0] > now:
-                return dict(cached[1])
+        if not host.strip():
+            return self._unknown_region()
 
-        region = await self._resolve_region_uncached(key)
-        async with self._geo_lock:
-            self._geo_cache[key] = (now + self._geo_cache_ttl_sec, dict(region))
-        return region
-
-    async def _resolve_region_uncached(self, host: str) -> dict[str, object]:
         ip_text = await self._resolve_ip_for_geo(host)
         if not ip_text:
-            return {"region_country": None, "region_province": None, "region_city": None, "region_label": _UNKNOWN_REGION_LABEL}
+            return self._unknown_region()
 
         try:
             ip_obj = ipaddress.ip_address(ip_text)
         except ValueError:
-            return {"region_country": None, "region_province": None, "region_city": None, "region_label": _UNKNOWN_REGION_LABEL}
+            return self._unknown_region()
 
         if (
             ip_obj.is_private
@@ -262,23 +260,36 @@ class SiteAggregator:
             or ip_obj.is_reserved
             or ip_obj.is_unspecified
         ):
-            return {"region_country": None, "region_province": None, "region_city": None, "region_label": _UNKNOWN_REGION_LABEL}
+            return self._unknown_region()
 
-        geo_row = await self._lookup_geo_city(ip_text)
-        if geo_row is None:
-            return {"region_country": None, "region_province": None, "region_city": None, "region_label": _UNKNOWN_REGION_LABEL}
+        cache_key = str(ip_obj)
+        now = time.time()
+        async with self._geo_lock:
+            cached = self._geo_cache.get(cache_key)
+            if cached and cached[0] > now:
+                return dict(cached[1])
 
-        country = str(geo_row.get("country") or "").strip() or None
-        province = str(geo_row.get("province") or "").strip() or None
-        city = str(geo_row.get("city") or "").strip() or None
-        parts = [item for item in [country, province, city] if item]
-        label = "/".join(parts) if parts else _UNKNOWN_REGION_LABEL
-        return {
-            "region_country": country,
-            "region_province": province,
-            "region_city": city,
-            "region_label": label,
-        }
+        async with self._geo_lookup_sem:
+            ip_sb = await self._lookup_ip_sb_region(cache_key)
+
+        if ip_sb is None:
+            region = self._unknown_region()
+        else:
+            country = self._pick_text(ip_sb, ["country", "country_name", "country_cn", "countryCode", "country_code"])
+            province = self._pick_text(ip_sb, ["region", "region_name", "province", "province_name", "state", "state_name"])
+            city = self._pick_text(ip_sb, ["city", "city_name"])
+            parts = [item for item in [country, province, city] if item]
+            label = "/".join(parts) if parts else _UNKNOWN_REGION_LABEL
+            region = {
+                "region_country": country,
+                "region_province": province,
+                "region_city": city,
+                "region_label": label,
+            }
+
+        async with self._geo_lock:
+            self._geo_cache[cache_key] = (now + self._geo_cache_ttl_sec, dict(region))
+        return region
 
     async def _resolve_ip_for_geo(self, host: str) -> str | None:
         try:
@@ -302,64 +313,62 @@ class SiteAggregator:
         except Exception:
             return None
 
-    async def _lookup_geo_city(self, ip_text: str) -> dict[str, str] | None:
-        reader = await self._get_geo_reader()
-        if reader is None:
-            return None
+    async def _lookup_ip_sb_region(self, ip_text: str) -> dict[str, object] | None:
+        base = self._geo_api_base.rstrip("/")
+        url = f"{base}/{ip_text}"
 
-        def _extract_name(names: dict[str, str] | None) -> str | None:
-            if not names:
-                return None
-            return names.get("zh-CN") or names.get("en") or next(iter(names.values()), None)
-
-        def _lookup() -> dict[str, str] | None:
+        def _fetch() -> dict[str, object] | None:
+            req = urllib.request.Request(
+                url=url,
+                method="GET",
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "frp-web-client/geo",
+                },
+            )
             try:
-                city_response = reader.city(ip_text)  # type: ignore[union-attr]
-            except Exception:
-                return None
-            country = _extract_name(getattr(getattr(city_response, "country", None), "names", None))
-            subdivision_name = None
-            subdivisions = getattr(city_response, "subdivisions", None)
-            if subdivisions:
-                with contextlib.suppress(Exception):
-                    subdivision_name = _extract_name(subdivisions[0].names)
-            city_name = _extract_name(getattr(getattr(city_response, "city", None), "names", None))
-            return {
-                "country": country or "",
-                "province": subdivision_name or "",
-                "city": city_name or "",
-            }
-
-        return await asyncio.to_thread(_lookup)
-
-    async def _get_geo_reader(self) -> object | None:
-        async with self._geo_lock:
-            if self._geo_reader_checked:
-                return self._geo_reader
-            self._geo_reader_checked = True
-            try:
-                from geoip2.database import Reader as GeoReader
-            except Exception as exc:
-                self._warn_geo_once(f"geoip2 unavailable: {exc}")
-                self._geo_reader = None
-                return None
-            if not self._geo_db_path.exists():
-                self._warn_geo_once(f"geo database not found: {self._geo_db_path}")
-                self._geo_reader = None
+                with urllib.request.urlopen(req, timeout=self._geo_api_timeout_sec) as resp:
+                    status = int(resp.getcode())
+                    if status < 200 or status >= 300:
+                        return None
+                    body = resp.read().decode("utf-8", errors="replace")
+            except (urllib.error.URLError, TimeoutError, OSError):
                 return None
             try:
-                self._geo_reader = GeoReader(str(self._geo_db_path))
-                return self._geo_reader
-            except Exception as exc:
-                self._warn_geo_once(f"geo database open failed: {exc}")
-                self._geo_reader = None
+                payload = json.loads(body)
+            except json.JSONDecodeError:
                 return None
+            return payload if isinstance(payload, dict) else None
 
-    def _warn_geo_once(self, message: str) -> None:
-        if self._geo_warned:
+        return await asyncio.to_thread(_fetch)
+
+    def _pick_text(self, payload: dict[str, object], keys: list[str]) -> str | None:
+        for key in keys:
+            value = payload.get(key)
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return None
+
+    def _unknown_region(self) -> dict[str, object]:
+        return {
+            "region_country": None,
+            "region_province": None,
+            "region_city": None,
+            "region_label": _UNKNOWN_REGION_LABEL,
+        }
+
+    def _warn_deprecated_geo_db_path(self, value: str) -> None:
+        if self._deprecated_geo_warned:
             return
-        self._geo_warned = True
-        _LOG.warning("GeoIP disabled, fallback to 内网/未知: %s", message)
+        self._deprecated_geo_warned = True
+        _LOG.warning(
+            "FRP_PANEL_GEOIP_DB_PATH is deprecated and ignored: %s. "
+            "Use FRP_PANEL_GEO_API_BASE/FRP_PANEL_GEO_API_TIMEOUT_SEC instead.",
+            value,
+        )
 
     async def _emit_probe_failures(self, rows: list[dict[str, object]]) -> None:
         if self._on_probe_failure is None:
