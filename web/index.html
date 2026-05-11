@@ -3,14 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FRP 主页</title>
+    <title>主页 - FRP 面板</title>
     <link rel="stylesheet" href="/web/style.css?v=__ASSET_VERSION__" />
   </head>
   <body data-page="home" data-asset-version="__ASSET_VERSION__">
     <header class="site-header">
       <div class="brand">
         <h1>FRP 面板</h1>
-        <p>成功穿透站点聚合</p>
+        <p>成功穿透站点总览</p>
+        <div class="brand-meta">
+          <span class="ui-version-badge">UI 2.2</span>
+          <span class="brand-meta-text">轻量总览视图</span>
+        </div>
       </div>
       <nav class="nav-tabs" aria-label="主导航">
         <a href="/" data-nav="home">主页</a>
@@ -32,15 +36,18 @@
     </header>
 
     <main class="single-page sites-page">
-      <section class="panel reveal">
-        <div class="panel-head">
-          <h2>已成功穿透站点</h2>
+      <section class="panel panel-hero reveal">
+        <div class="panel-head panel-head-wrap">
+          <div>
+            <h2>已成功穿透站点</h2>
+            <p class="hint info panel-subtext">按端口连通性展示可访问站点，支持地区与关键字筛选。</p>
+          </div>
           <button id="sites_refresh_btn" class="btn secondary small">
             <svg class="btn-icon" aria-hidden="true"><use href="/web/icons.svg#icon-refresh"></use></svg>
             <span class="btn-label">刷新</span>
           </button>
         </div>
-        <p class="hint info">展示端口探活成功的站点（地区由 ip.sb 在线识别，探活统一按 TCP 连通性判定）。</p>
+
         <div class="sites-filters">
           <div class="field">
             <label for="sites_region_filter">地区筛选</label>
@@ -57,6 +64,7 @@
             <input id="sites_proxy_filter" placeholder="输入代理名称" />
           </div>
         </div>
+
         <div id="sites_summary" class="sites-summary">加载中...</div>
         <div id="sites_list" class="sites-list">
           <div class="jump-empty">正在获取站点数据...</div>
