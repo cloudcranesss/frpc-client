@@ -15,16 +15,15 @@ async def test_refresh_keeps_only_successful_sites_with_tcp_probe():
 
     def build_links(_: ProxyClientConfig):
         return [
-            {"proxy_name": "web-ok", "proxy_type": "http", "url": "http://ok.test"},
-            {"proxy_name": "web-fail", "proxy_type": "https", "url": "https://bad.test"},
+            {"proxy_name": "web-ok", "proxy_type": "http", "server_addr": "ok.test", "remote_port": 80},
+            {"proxy_name": "web-fail", "proxy_type": "https", "server_addr": "bad.test", "remote_port": 443},
             {
                 "proxy_name": "tcp-ok",
                 "proxy_type": "tcp",
                 "server_addr": "127.0.0.1",
                 "remote_port": 22022,
-                "url": "http://ignored.test",
             },
-            {"proxy_name": "tcp-skip", "proxy_type": "tcp", "url": "http://skip.test"},
+            {"proxy_name": "tcp-skip", "proxy_type": "tcp", "server_addr": "", "remote_port": 9000},
         ]
 
     aggregator = SiteAggregator(load_clients=load_clients, build_jump_links=build_links)
@@ -41,19 +40,24 @@ async def test_refresh_keeps_only_successful_sites_with_tcp_probe():
     names = {item["proxy_name"] for item in rows}
     assert names == {"web-ok", "tcp-ok"}
     assert all(item["probe_ok"] is True for item in rows)
+    row = next(item for item in rows if item["proxy_name"] == "tcp-ok")
+    assert row["server_addr"] == "127.0.0.1"
+    assert row["remote_port"] == 22022
+    assert row["url"] == "http://127.0.0.1:22022"
 
 
 @pytest.mark.asyncio
-async def test_http_url_port_parsing_for_tcp_probe():
+async def test_only_server_addr_and_remote_port_are_used():
     async def load_clients():
         return [ProxyClientConfig(id="c1", name="A")]
 
     def build_links(_: ProxyClientConfig):
         return [
-            {"proxy_name": "h1", "proxy_type": "http", "url": "http://a.test"},
-            {"proxy_name": "h2", "proxy_type": "https", "url": "https://b.test"},
-            {"proxy_name": "h3", "proxy_type": "http", "url": "http://c.test:8088"},
-            {"proxy_name": "bad", "proxy_type": "http", "url": "http://bad.test:abc"},
+            {"proxy_name": "h1", "proxy_type": "http", "server_addr": "a.test", "remote_port": 80, "url": "https://ignored:9999"},
+            {"proxy_name": "h2", "proxy_type": "https", "server_addr": "b.test", "remote_port": 443},
+            {"proxy_name": "h3", "proxy_type": "tcp", "server_addr": "c.test", "remote_port": 8088},
+            {"proxy_name": "bad-port", "proxy_type": "http", "server_addr": "d.test", "remote_port": 0},
+            {"proxy_name": "bad-host", "proxy_type": "http", "server_addr": "", "remote_port": 1000},
         ]
 
     aggregator = SiteAggregator(load_clients=load_clients, build_jump_links=build_links, timeout_sec=1)
@@ -70,7 +74,7 @@ async def test_http_url_port_parsing_for_tcp_probe():
     assert ("a.test", 80) in seen
     assert ("b.test", 443) in seen
     assert ("c.test", 8088) in seen
-    assert all(host != "bad.test" for host, _ in seen)
+    assert all(host != "d.test" for host, _ in seen)
 
 
 @pytest.mark.asyncio

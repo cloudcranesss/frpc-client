@@ -39,7 +39,14 @@ function renderSites() {
     els.sitesList.appendChild(empty);
     return;
   }
+
   for (const item of rows) {
+    const host = String(item.server_addr || "").trim();
+    const port = Number.parseInt(String(item.remote_port ?? ""), 10);
+    const hasEndpoint = !!host && Number.isInteger(port) && port > 0;
+    const endpoint = hasEndpoint ? `${host}:${port}` : "-";
+    const openUrl = hasEndpoint ? `http://${host}:${port}` : (item.url || "#");
+
     const card = document.createElement("article");
     card.className = "site-card";
     card.innerHTML = `
@@ -51,7 +58,7 @@ function renderSites() {
         <span>客户端：${escapeHtml(item.client_name || item.client_id || "-")}</span>
         <span>类型：${escapeHtml((item.proxy_type || "").toUpperCase() || "-")}</span>
       </div>
-      <a class="jump-link-url" href="${escapeHtml(item.url || "#")}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url || "-")}</a>
+      <a class="jump-link-url" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(endpoint)}</a>
       <div class="site-card-meta">
         <span>探活状态：${item.probe_ok ? "连通" : "失败"}</span>
         <span>延迟：${item.latency_ms ?? "-"} ms</span>
@@ -84,19 +91,23 @@ function connectStream() {
   const token = ++state.streamToken;
   const source = new EventSource("/api/sites/stream");
   state.eventSource = source;
+
   source.onopen = () => {
     state.reconnectDelaySec = 1;
   };
+
   source.addEventListener("snapshot", (raw) => {
     const payload = JSON.parse(raw.data || "{}");
     state.items = payload.items || [];
     renderSites();
   });
+
   source.addEventListener("update", (raw) => {
     const payload = JSON.parse(raw.data || "{}");
     state.items = payload.items || [];
     renderSites();
   });
+
   source.onerror = () => {
     source.close();
     if (token !== state.streamToken) return;

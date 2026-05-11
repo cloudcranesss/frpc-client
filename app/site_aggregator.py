@@ -6,7 +6,6 @@ import socket
 import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
-from urllib.parse import urlsplit
 
 from .config_store import ProxyClientConfig
 
@@ -126,47 +125,26 @@ class SiteAggregator:
             link_data = {
                 "proxy_name": getattr(link, "proxy_name", ""),
                 "proxy_type": getattr(link, "proxy_type", ""),
-                "url": getattr(link, "url", ""),
+                "server_addr": getattr(link, "server_addr", ""),
+                "remote_port": getattr(link, "remote_port", None),
             }
-        proxy_type = str(link_data.get("proxy_type", "")).strip().lower()
-        if proxy_type not in {"http", "https", "tcp"}:
-            return None
-        url = str(link_data.get("url", "")).strip()
+        proxy_type = str(link_data.get("proxy_type", "")).strip().lower() or "tcp"
         server_addr = str(link_data.get("server_addr", "")).strip()
         remote_port = link_data.get("remote_port")
         try:
             remote_port_value = int(remote_port) if remote_port is not None else None
         except (TypeError, ValueError):
-            remote_port_value = None
-        if proxy_type in {"http", "https"}:
-            parsed = urlsplit(url)
-            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-                return None
-            server_addr = parsed.hostname.strip()
-            if not server_addr:
-                return None
-            try:
-                parsed_port = parsed.port
-            except ValueError:
-                return None
-            if parsed_port is None:
-                remote_port_value = 443 if parsed.scheme == "https" else 80
-            else:
-                remote_port_value = int(parsed_port)
-            if remote_port_value <= 0:
-                return None
-        else:
-            if not server_addr or remote_port_value is None:
-                return None
-            url = f"tcp://{server_addr}:{remote_port_value}"
+            return None
+        if not server_addr or remote_port_value is None or remote_port_value <= 0:
+            return None
         proxy_name = str(link_data.get("proxy_name", "")).strip() or "proxy"
         return {
             "client_id": client.id,
             "client_name": client.name,
             "proxy_name": proxy_name,
             "proxy_type": proxy_type,
-            "url": url,
-            "server_addr": server_addr or None,
+            "url": f"http://{server_addr}:{remote_port_value}",
+            "server_addr": server_addr,
             "remote_port": remote_port_value,
             "probe_ok": False,
             "http_status": None,
@@ -182,13 +160,9 @@ class SiteAggregator:
 
         async def worker(row: dict[str, object]) -> dict[str, object]:
             async with sem:
-                probe_type = str(row.get("proxy_type", ""))
-                if probe_type in {"http", "https", "tcp"}:
-                    host = str(row.get("server_addr") or "")
-                    port = row.get("remote_port")
-                    result = await self._probe_tcp(host, int(port) if isinstance(port, int) else 0)
-                else:
-                    result = _ProbeResult(ok=False, status=None, latency_ms=None, error=f"unsupported probe type: {probe_type}")
+                host = str(row.get("server_addr") or "")
+                port = row.get("remote_port")
+                result = await self._probe_tcp(host, int(port) if isinstance(port, int) else 0)
             now = time.time()
             row["probe_ok"] = result.ok
             row["http_status"] = result.status

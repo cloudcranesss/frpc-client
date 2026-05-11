@@ -110,6 +110,8 @@ class SuccessfulSiteItem(BaseModel):
     proxy_name: str
     proxy_type: str
     url: str
+    server_addr: str | None = None
+    remote_port: int | None = None
     probe_ok: bool
     http_status: int | None = None
     latency_ms: int | None = None
